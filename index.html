@@ -403,7 +403,7 @@ textarea{resize:vertical;min-height:64px}
     tab:'book',studios:[STUDIOS[0].id],date:null,start:null,dur:1,anchor:null,msg:'',
     month:new Date(TODAY.getFullYear(),TODAY.getMonth(),1),
     step:'slots',err:'',busy:false,done:null,confirmCancel:null,
-    bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
+    bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,confirmRemove:null,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
     reg:{name:'',sid:'',year:'',email:'',phone:'',agree:false},
     form:{purpose:'',people:1,notes:''}
@@ -520,8 +520,8 @@ textarea{resize:vertical;min-height:64px}
   function canBook(){return isAdmin()||!!(S.member&&S.member.status==='approved')}
   function pendingMembers(){return Object.keys(S.members).map(function(k){return S.members[k]}).filter(function(m){return m&&m.status==='pending'})}
   function pendingHTML(){
-    var rej=S.member&&S.member.status==='rejected';
-    return '<div class="blocked" role="status"><h3>'+(rej?'ההרשמה לא אושרה':'ההרשמה ממתינה לאישור מנהל')+'</h3><p>'+(rej?'הבקשה שלך להזמנת אולפנים לא אושרה. לבירור פנו למנהלי המערכת:':'פרטיך התקבלו. אפשר יהיה להזמין אולפנים אחרי שמנהל יאשר את ההרשמה. אפשר לעיין בזמינות בינתיים. למנהלי המערכת:')+'</p><p>'+adminsLine()+'</p></div>';
+    var rem=S.member&&S.member.status==='removed',rej=rem||(S.member&&S.member.status==='rejected');
+    return '<div class="blocked" role="status"><h3>'+(rem?'הגישה להזמנת אולפנים הוסרה':rej?'ההרשמה לא אושרה':'ההרשמה ממתינה לאישור מנהל')+'</h3><p>'+(rem?'מנהל הסיר את הגישה שלך להזמנת אולפנים. לבירור פנו למנהלי המערכת:':rej?'הבקשה שלך להזמנת אולפנים לא אושרה. לבירור פנו למנהלי המערכת:':'פרטיך התקבלו. אפשר יהיה להזמין אולפנים אחרי שמנהל יאשר את ההרשמה. אפשר לעיין בזמינות בינתיים. למנהלי המערכת:')+'</p><p>'+adminsLine()+'</p></div>';
   }
   var creatingMember=false;
   async function ensureMember(){
@@ -536,18 +536,33 @@ textarea{resize:vertical;min-height:64px}
     if(!isAdmin())return;
     try{await S.db.doc('members/'+uid).update({status:status,decidedBy:(S.profile&&S.profile.name)||'',decidedAt:Date.now()})}catch(e){}
   }
+  async function removeMember(uid){
+    if(!isAdmin())return;
+    S.confirmRemove=null;
+    var k,now=Date.now();
+    for(k in S.bookings){var bk=S.bookings[k];
+      if(bk&&bk.uid===uid&&parse(bk.date).getTime()+(bk.hour+1)*3600000>now){try{await S.db.doc('bookings/'+k).delete()}catch(e){}}}
+    await decideMember(uid,'removed');
+    renderList();
+  }
   function membersHTML(){
     var l=Object.keys(S.members).map(function(k){return S.members[k]}).filter(Boolean);
-    l.sort(function(a,b){var pa=a.status==='pending'?0:1,pb=b.status==='pending'?0:1;return pa-pb||(b.createdAt||0)-(a.createdAt||0)});
-    var h='<h3>בקשות הרשמה ומשתמשים</h3>';
-    if(!l.length)return h+'<div class="card empty"><p style="margin:0">עדיין אין נרשמים.</p></div>';
-    var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר'};
+    var order={pending:0,approved:1,rejected:2,removed:3};
+    l.sort(function(a,b){var pa=order[a.status||'pending'],pb=order[b.status||'pending'];return pa-pb||String(a.name||'').localeCompare(String(b.name||''),'he')});
+    var h='<h3>משתמשים רשומים ('+l.length+')</h3>';
+    if(!l.length)return h+'<div class="card empty"><p style="margin:0">עדיין אין נרשמים. משתמש מופיע כאן אחרי הכניסה הראשונה שלו למערכת.</p></div>';
+    var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
     return h+'<div class="list">'+l.map(function(m){
-      var u=esc(m.uid),acts='';
-      if(m.status==='pending')acts='<button class="btn" data-act="mem-ok" data-u="'+u+'">אישור</button><button class="btn ghost" data-act="mem-no" data-u="'+u+'">דחייה</button>';
-      else if(m.status==='approved')acts='<button class="btn ghost" data-act="mem-no" data-u="'+u+'">ביטול אישור</button>';
-      else acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">אישור</button>';
-      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(m.status==='pending'?'tag-bl':'lbl')+'">'+tag[m.status||'pending']+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+esc(m.role):'')+'</p></div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
+      var u=esc(m.uid),st=m.status||'pending',acts='';
+      if(S.confirmRemove===m.uid)acts='<button class="btn danger" data-act="mem-rm-yes" data-u="'+u+'">כן, להסיר</button><button class="btn ghost" data-act="mem-rm-no">ביטול</button>';
+      else{
+        if(st==='pending')acts='<button class="btn" data-act="mem-ok" data-u="'+u+'">אישור</button><button class="btn ghost" data-act="mem-no" data-u="'+u+'">דחייה</button>';
+        else if(st==='approved')acts='<button class="btn ghost" data-act="mem-no" data-u="'+u+'">ביטול אישור</button>';
+        else if(st==='removed')acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">שחזור ואישור</button>';
+        else acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">אישור</button>';
+        if(st!=='removed'&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-rm" data-u="'+u+'">הסרה</button>';
+      }
+      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+esc(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
   }
 
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
@@ -1118,6 +1133,9 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='login-google'){googleLogin()}
     else if(a==='mem-ok'){decideMember(b.dataset.u,'approved')}
     else if(a==='mem-no'){decideMember(b.dataset.u,'rejected')}
+    else if(a==='mem-rm'){S.confirmRemove=b.dataset.u;renderList()}
+    else if(a==='mem-rm-no'){S.confirmRemove=null;renderList()}
+    else if(a==='mem-rm-yes'){removeMember(b.dataset.u)}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
     else if(a==='plan-open'){openPlan(b)}
