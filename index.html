@@ -298,6 +298,11 @@ textarea{resize:vertical;min-height:64px}
       await x.A.sendSignInLinkToEmail(x.auth,email,{url:location.origin+location.pathname,handleCodeInApp:true});
       lsSet('yb_email',email);
     },
+    google:async function(){
+      var x=await load(),pr=new x.A.GoogleAuthProvider();
+      pr.setCustomParameters({hd:'edu.jmc.ac.il',prompt:'select_account'});
+      await x.A.signInWithPopup(x.auth,pr);
+    },
     signOut:async function(){var x=await load();await x.A.signOut(x.auth)}
   };
   window.claude={use:async function(name){
@@ -905,7 +910,19 @@ textarea{resize:vertical;min-height:64px}
       (L.sent?'<div class="banner" role="status">נשלח קישור כניסה אל <b dir="ltr">'+esc(L.sent)+'</b>. פתחו את המייל (גם את תיקיית הספאם) ולחצו על הקישור. אם לא הגיע תוך כמה דקות, בדקו גם בדואר הזבל או פנו למנהלי המערכת.</div>':'')+
       '<div class="field"><label class="lbl" for="l-email">מייל ארגוני</label><input id="l-email" type="email" autocomplete="email" dir="ltr" data-t="loginEmail" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.loginEmail||'')+'" style="text-align:right"></div>'+
       ((L.err||prev)?'<p class="err" role="alert">'+esc(L.err||prev)+'</p>':'')+
-      '<div><button class="btn" data-act="login-send"'+(L.busy?' disabled':'')+'>'+(L.busy?'שולח…':(L.sent?'שליחה מחדש':'שליחת קישור כניסה'))+'</button></div></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="login-send"'+(L.busy?' disabled':'')+'>'+(L.busy?'שולח…':(L.sent?'שליחה מחדש':'שליחת קישור כניסה'))+'</button><button class="btn ghost" data-act="login-google"'+(L.busy?' disabled':'')+'>כניסה עם Google</button></div></div>';
+  }
+  async function googleLogin(){
+    var L=S.login||(S.login={busy:false,sent:'',err:''});
+    L.busy=true;L.err='';renderLogin();
+    try{
+      await window.ybAuth.google();
+      location.reload();return;
+    }catch(e){
+      var c=e&&e.code||'';
+      L.err=c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request'?'':c==='auth/operation-not-allowed'?'כניסה עם Google לא מופעלת ב-Firebase (Authentication, Sign-in method, Google).':c==='auth/unauthorized-domain'?'הכתובת של האתר עדיין לא אושרה ב-Firebase (Authorized domains).':c==='auth/popup-blocked'?'הדפדפן חסם את החלון. אשרו חלונות קופצים לאתר ונסו שוב.':'הכניסה עם Google לא הצליחה.'+(c?' (קוד: '+c+')':'');
+    }
+    L.busy=false;renderLogin();
   }
   async function sendLogin(){
     var em=String(S.loginEmail||'').trim().toLowerCase(),L=S.login||(S.login={busy:false,sent:'',err:''});
@@ -1042,6 +1059,7 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='tf-accept'){acceptTransfer(b.dataset.g)}
     else if(a==='tf-decline'){S.tfMsg='';dropTransfer(b.dataset.g,'declined')}
     else if(a==='login-send'){sendLogin()}
+    else if(a==='login-google'){googleLogin()}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
     else if(a==='plan-open'){openPlan(b)}
