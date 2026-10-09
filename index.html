@@ -354,7 +354,7 @@ textarea{resize:vertical;min-height:64px}
   var SHORT_DAYS={'2027-05-03':19,'2027-05-10':17,'2027-05-11':14};
   var EMAIL_DOMAIN='edu.jmc.ac.il';
   var EMAIL_RE=/^[a-z0-9._%+\-]+@edu\.jmc\.ac\.il$/;
-  var YEARS=['שנה א׳','שנה ב׳','שנה ג׳','התמחות','אחר'];
+  var YEARS=['סטודנט','מרצה','מתרגל','מדריך','אורח'];
   var PURPOSES=['תרגיל קורס','פרויקט גמר','פרויקט אישי','צילום לתיק עבודות','אחר'];
 
   /* ===== Helpers ===== */
@@ -864,8 +864,8 @@ textarea{resize:vertical;min-height:64px}
       '<h2>'+(edit?'עריכת פרטים אישיים':'ברוכים הבאים, נרשמים לפני ההזמנה הראשונה')+'</h2>'+
       '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'. הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="r-sid">מספר סטודנט</label><input id="r-sid" inputmode="numeric" dir="ltr" data-r="sid" value="'+esc(r.sid)+'" style="text-align:right"></div>'+
-      '<div class="field"><label class="lbl" for="r-year">שנת לימודים</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="r-sid">מספר סטודנט / תעודת זהות</label><input id="r-sid" inputmode="numeric" dir="ltr" data-r="sid" value="'+esc(r.sid)+'" style="text-align:right"></div>'+
+      '<div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="r-email">מייל ארגוני</label><input id="r-email" type="email" autocomplete="email" dir="ltr" data-r="email" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.authEmail||r.email)+'"'+(S.authEmail?' readonly':'')+' style="text-align:right"></div>'+
       '<div class="field"><label class="lbl" for="r-phone">מספר נייד</label><input id="r-phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" data-r="phone" placeholder="050-1234567" value="'+esc(r.phone)+'" style="text-align:right"></div></div>'+
       (edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+
@@ -897,7 +897,7 @@ textarea{resize:vertical;min-height:64px}
     var del=S.confirmDelete?'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" data-act="del-yes">כן, למחוק את הפרופיל</button><button class="btn ghost" data-act="del-no">ביטול</button></div>'
       :'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="reg-edit">עריכת פרטים</button><button class="btn ghost" data-act="del-ask">מחיקת פרופיל</button></div>';
     $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head"><span class="avatar lg" aria-hidden="true">'+initial(P.name)+'</span><div><h2>'+esc(P.name)+'</h2><span class="lbl">'+esc(P.year||'')+'</span></div></div>'+
-      '<dl class="kv"><dt>מס׳ סטודנט</dt><dd class="t">'+esc(P.sid)+'</dd><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd><dt>נייד</dt><dd class="t">'+esc(P.phone)+'</dd></dl>'+
+      '<dl class="kv"><dt>מס׳ סטודנט / ת״ז</dt><dd class="t">'+esc(P.sid)+'</dd><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd><dt>נייד</dt><dd class="t">'+esc(P.phone)+'</dd></dl>'+
       '<div class="stats"><div><b>'+up.length+'</b><span>הזמנות קרובות</span></div><div><b>'+mh+'</b><span>שעות החודש</span></div><div><b>'+th+'</b><span>סה״כ שעות</span></div></div>'+del+
       (S.confirmDelete?'<p class="lbl" style="margin:0">מחיקת הפרופיל מוחקת רק את הפרטים האישיים. הזמנות קיימות נשארות עד לביטול.</p>':'')+'</aside>'+
       '<div class="sect"><h3>הזמנות קרובות</h3>'+upItems+'<h3>היסטוריה</h3>'+histItems+'</div></div>';
@@ -962,8 +962,8 @@ textarea{resize:vertical;min-height:64px}
     var r=S.reg,edit=!!S.profile;
     var name=(r.name||'').trim(),sid=(r.sid||'').trim(),email=(r.email||'').trim(),phone=(r.phone||'').trim();
     if(!name){S.regErr='נא למלא שם מלא.';return renderReg()}
-    if(!/^\d{5,10}$/.test(sid)){S.regErr='מספר סטודנט הוא 5 עד 10 ספרות.';return renderReg()}
-    if(!r.year){S.regErr='נא לבחור שנת לימודים.';return renderReg()}
+    if(!/^\d{5,10}$/.test(sid)){S.regErr='מספר סטודנט או תעודת זהות הם 5 עד 10 ספרות.';return renderReg()}
+    if(!r.year){S.regErr='נא לבחור תפקיד.';return renderReg()}
     email=email.toLowerCase();
     if(S.authEmail)email=S.authEmail;
     if(!EMAIL_RE.test(email)){S.regErr='ההרשמה אפשרית רק עם מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'.';return renderReg()}
