@@ -902,7 +902,7 @@ textarea{resize:vertical;min-height:64px}
     $('#tabs').innerHTML='';$('#who').innerHTML='';$('#notice').innerHTML='';
     var L=S.login||(S.login={busy:false,sent:'',err:''}),prev=(window.ybAuth&&window.ybAuth.lastError())||'';
     $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם המייל הארגוני @'+EMAIL_DOMAIN+'. נשלח אליו קישור כניסה, בלי סיסמה.</p></div>'+
-      (L.sent?'<div class="banner" role="status">נשלח קישור כניסה אל <b dir="ltr">'+esc(L.sent)+'</b>. פתחו את המייל (גם את תיקיית הספאם) ולחצו על הקישור. אפשר לסגור את הדף הזה.</div>':'')+
+      (L.sent?'<div class="banner" role="status">נשלח קישור כניסה אל <b dir="ltr">'+esc(L.sent)+'</b>. פתחו את המייל (גם את תיקיית הספאם) ולחצו על הקישור. אם לא הגיע תוך כמה דקות, בדקו גם בדואר הזבל או פנו למנהלי המערכת.</div>':'')+
       '<div class="field"><label class="lbl" for="l-email">מייל ארגוני</label><input id="l-email" type="email" autocomplete="email" dir="ltr" data-t="loginEmail" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.loginEmail||'')+'" style="text-align:right"></div>'+
       ((L.err||prev)?'<p class="err" role="alert">'+esc(L.err||prev)+'</p>':'')+
       '<div><button class="btn" data-act="login-send"'+(L.busy?' disabled':'')+'>'+(L.busy?'שולח…':(L.sent?'שליחה מחדש':'שליחת קישור כניסה'))+'</button></div></div>';
@@ -914,7 +914,7 @@ textarea{resize:vertical;min-height:64px}
     try{await window.ybAuth.send(em);L.sent=em}
     catch(e){
       var c=e&&e.code||'';
-      L.err=c==='auth/unauthorized-continue-uri'?'הכתובת של האתר עדיין לא אושרה ב-Firebase (Authorized domains).':(c==='auth/quota-exceeded'||c==='auth/too-many-requests')?'נשלחו יותר מדי בקשות. נסו שוב מאוחר יותר.':'השליחה לא הצליחה. נסו שוב בעוד רגע.';
+      L.err=c==='auth/operation-not-allowed'?'כניסה בקישור במייל לא מופעלת ב-Firebase (Authentication, Sign-in method, Email link).':c==='auth/unauthorized-continue-uri'?'הכתובת של האתר עדיין לא אושרה ב-Firebase (Authorized domains).':(c==='auth/quota-exceeded'||c==='auth/too-many-requests')?'נשלחו יותר מדי בקשות. נסו שוב מאוחר יותר.':'השליחה לא הצליחה. נסו שוב בעוד רגע.'+(c?' (קוד: '+c+')':'');
     }
     L.busy=false;renderLogin();
   }
