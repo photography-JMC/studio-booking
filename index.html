@@ -158,7 +158,12 @@ textarea{resize:vertical;min-height:64px}
 .who{display:flex;align-items:center;gap:8px;font-weight:600}
 .who .btn{padding:6px 12px;font-size:13.5px}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent-fg);display:grid;place-items:center;font-family:var(--f-display);font-weight:600;flex:none}
+.avatar{overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .avatar.lg{width:56px;height:56px;font-size:22px}
+.avatar.xl{width:84px;height:84px;font-size:32px}
+.photo-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.photo-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .reg{max-width:540px;margin-inline:auto;padding:26px;display:flex;flex-direction:column;gap:14px}
 .reg h2{margin:0;font-family:var(--f-display);font-weight:600;font-size:21px;text-wrap:balance}
 .reg p{margin:0;color:var(--muted)}
@@ -559,6 +564,24 @@ textarea{resize:vertical;min-height:64px}
     out.sort(function(a,b){var c=(a.date+pad(a.from)).localeCompare(b.date+pad(b.from));return past?-c:c});
     return out;
   }
+  function avatarHTML(p,big){
+    var c='avatar'+(big==='xl'?' xl':big?' lg':'');
+    if(p&&p.photo)return '<span class="'+c+'"><img src="'+esc(p.photo)+'" alt=""></span>';
+    return '<span class="'+c+'" aria-hidden="true">'+initial(p&&p.name)+'</span>';
+  }
+  function photoFrom(file){
+    return new Promise(function(res,rej){
+      var u=URL.createObjectURL(file),im=new Image();
+      im.onload=function(){
+        var n=Math.min(im.width,im.height),c=document.createElement('canvas');
+        c.width=c.height=192;
+        c.getContext('2d').drawImage(im,(im.width-n)/2,(im.height-n)/2,n,n,0,0,192,192);
+        URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',0.82));
+      };
+      im.onerror=function(){URL.revokeObjectURL(u);rej(new Error('img'))};
+      im.src=u;
+    });
+  }
   function initial(n){return esc((n||'?').trim().charAt(0))}
 
   /* ===== Rendering ===== */
@@ -570,7 +593,7 @@ textarea{resize:vertical;min-height:64px}
     var t=[['book','הזמנה חדשה'],['mine','האזור שלי']];
     if(isAdmin())t.push(['all','ניהול']);
     $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('');
-    $('#who').innerHTML=(S.profile?'<span class="avatar" aria-hidden="true">'+initial(S.profile.name)+'</span><span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<button class="btn ghost" data-act="logout">התנתקות</button>':'');
+    $('#who').innerHTML=(S.profile?avatarHTML(S.profile)+'<span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<button class="btn ghost" data-act="logout">התנתקות</button>':'');
   }
   function renderNotice(){
     var n=$('#notice');
@@ -863,6 +886,7 @@ textarea{resize:vertical;min-height:64px}
     return '<div class="card reg"><div>'+
       '<h2>'+(edit?'עריכת פרטים אישיים':'ברוכים הבאים, נרשמים לפני ההזמנה הראשונה')+'</h2>'+
       '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'. הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
+      '<div class="photo-row">'+avatarHTML({photo:r.photo,name:r.name},'xl')+'<div class="photo-btns"><button type="button" class="btn ghost" data-act="photo-pick">'+(r.photo?'החלפת תמונה':'העלאת תמונת פרופיל')+'</button>'+(r.photo?'<button type="button" class="btn ghost" data-act="photo-remove">הסרה</button>':'')+'<input type="file" id="r-photo" accept="image/*" data-photo="1" hidden><span class="lbl" style="flex-basis:100%">אפשר גם בלי תמונה. התמונה מוצגת רק לך.</span></div></div>'+
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="r-sid">מספר סטודנט / תעודת זהות</label><input id="r-sid" inputmode="numeric" dir="ltr" data-r="sid" value="'+esc(r.sid)+'" style="text-align:right"></div>'+
       '<div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div></div>'+
@@ -896,7 +920,7 @@ textarea{resize:vertical;min-height:64px}
       :'<p class="lbl" style="margin:0">עוד אין היסטוריה. כל ההזמנות שהסתיימו יופיעו כאן.</p>';
     var del=S.confirmDelete?'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" data-act="del-yes">כן, למחוק את הפרופיל</button><button class="btn ghost" data-act="del-no">ביטול</button></div>'
       :'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="reg-edit">עריכת פרטים</button><button class="btn ghost" data-act="del-ask">מחיקת פרופיל</button></div>';
-    $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head"><span class="avatar lg" aria-hidden="true">'+initial(P.name)+'</span><div><h2>'+esc(P.name)+'</h2><span class="lbl">'+esc(P.year||'')+'</span></div></div>'+
+    $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head">'+avatarHTML(P,true)+'<div><h2>'+esc(P.name)+'</h2><span class="lbl">'+esc(P.year||'')+'</span></div></div>'+
       '<dl class="kv"><dt>מס׳ סטודנט / ת״ז</dt><dd class="t">'+esc(P.sid)+'</dd><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd><dt>נייד</dt><dd class="t">'+esc(P.phone)+'</dd></dl>'+
       '<div class="stats"><div><b>'+up.length+'</b><span>הזמנות קרובות</span></div><div><b>'+mh+'</b><span>שעות החודש</span></div><div><b>'+th+'</b><span>סה״כ שעות</span></div></div>'+del+
       (S.confirmDelete?'<p class="lbl" style="margin:0">מחיקת הפרופיל מוחקת רק את הפרטים האישיים. הזמנות קיימות נשארות עד לביטול.</p>':'')+'</aside>'+
@@ -974,7 +998,7 @@ textarea{resize:vertical;min-height:64px}
     phone=dg.slice(0,3)+'-'+dg.slice(3);
     if(!edit&&!r.agree){S.regErr='כדי להירשם צריך לאשר את ההתחייבות.';return renderReg()}
     S.regErr='';S.regBusy=true;renderReg();
-    var data={name:name,sid:sid,year:r.year,email:email,phone:phone,createdAt:(S.profile&&S.profile.createdAt)||Date.now(),updatedAt:Date.now()};
+    var data={name:name,sid:sid,year:r.year,email:email,phone:phone,photo:r.photo||'',createdAt:(S.profile&&S.profile.createdAt)||Date.now(),updatedAt:Date.now()};
     try{
       await profileRef().set(data);
       S.profile=data;S.editing=false;S.regBusy=false;
@@ -1058,6 +1082,8 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='tf-cancel'){dropTransfer(b.dataset.g,null)}
     else if(a==='tf-accept'){acceptTransfer(b.dataset.g)}
     else if(a==='tf-decline'){S.tfMsg='';dropTransfer(b.dataset.g,'declined')}
+    else if(a==='photo-pick'){var fi=$('#r-photo');if(fi)fi.click()}
+    else if(a==='photo-remove'){S.reg.photo='';renderReg()}
     else if(a==='login-send'){sendLogin()}
     else if(a==='login-google'){googleLogin()}
     else if(a==='logout'){logout()}
@@ -1094,7 +1120,7 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='cancel-no'){S.confirmCancel=null;renderList()}
     else if(a==='cancel-yes'){cancelGroup(b.dataset.g)}
     else if(a==='reg-save'){saveProfile()}
-    else if(a==='reg-edit'){var p=S.profile||{};S.reg={name:p.name||'',sid:p.sid||'',year:p.year||'',email:p.email||'',phone:p.phone||'',agree:true};S.editing=true;S.regErr='';render()}
+    else if(a==='reg-edit'){var p=S.profile||{};S.reg={name:p.name||'',sid:p.sid||'',year:p.year||'',email:p.email||'',phone:p.phone||'',photo:p.photo||'',agree:true};S.editing=true;S.regErr='';render()}
     else if(a==='reg-cancel'){S.editing=false;S.regErr='';render()}
     else if(a==='del-ask'){S.confirmDelete=true;renderList()}
     else if(a==='del-no'){S.confirmDelete=false;renderList()}
@@ -1102,6 +1128,12 @@ textarea{resize:vertical;min-height:64px}
   });
   function onField(e){
     var t=e.target,d=t.dataset||{};
+    if(d.photo){
+      if(e.type==='change'&&t.files&&t.files[0]){
+        photoFrom(t.files[0]).then(function(url){S.reg.photo=url;S.regErr='';renderReg()},function(){S.regErr='אי אפשר לקרוא את הקובץ הזה. נסו תמונה אחרת (JPG או PNG).';renderReg()});
+      }
+      return;
+    }
     if(d.f)S.form[d.f]=t.value;
     if(d.t)S[d.t]=t.value;
     if(d.r)S.reg[d.r]=t.type==='checkbox'?t.checked:t.value;
