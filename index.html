@@ -403,7 +403,7 @@ textarea{resize:vertical;min-height:64px}
     tab:'book',studios:[STUDIOS[0].id],date:null,start:null,dur:1,anchor:null,msg:'',
     month:new Date(TODAY.getFullYear(),TODAY.getMonth(),1),
     step:'slots',err:'',busy:false,done:null,confirmCancel:null,
-    bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
+    bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
     reg:{name:'',sid:'',year:'',email:'',phone:'',agree:false},
     form:{purpose:'',people:1,notes:''}
@@ -472,6 +472,7 @@ textarea{resize:vertical;min-height:64px}
     var t=S.transfers[gid],P=S.profile;
     S.tfMsg='';
     if(!t||!P||t.status!=='pending'||t.toEmail!==myEmail())return;
+    if(!canBook()){S.tfMsg='כדי לקבל מקום צריך שמנהל יאשר את ההרשמה שלך.';return renderList()}
     if(isBlocked(S.uid)){S.tfMsg='החשבון שלך חסום מהזמנת אולפנים ולכן אי אפשר לקבל מקום.';return renderList()}
     if(parse(t.date).getTime()+t.from*3600000<=Date.now()){S.tfMsg='ההזמנה כבר התחילה, אי אפשר לקבל אותה.';return renderList()}
     if(myHoursOn(t.date)+(t.to-t.from)>MAX_DAY){S.tfMsg='קבלת המקום תחרוג ממכסה של '+MAX_DAY+' שעות ליום בתאריך הזה.';return renderList()}
@@ -515,9 +516,44 @@ textarea{resize:vertical;min-height:64px}
     return n;
   }
   function isBlocked(uid){return !!uid&&strikes(uid)>=MAX_STRIKES}
+  /* ----- אישור מנהל לפני הזמנה ----- */
+  function canBook(){return isAdmin()||!!(S.member&&S.member.status==='approved')}
+  function pendingMembers(){return Object.keys(S.members).map(function(k){return S.members[k]}).filter(function(m){return m&&m.status==='pending'})}
+  function pendingHTML(){
+    var rej=S.member&&S.member.status==='rejected';
+    return '<div class="blocked" role="status"><h3>'+(rej?'ההרשמה לא אושרה':'ההרשמה ממתינה לאישור מנהל')+'</h3><p>'+(rej?'הבקשה שלך להזמנת אולפנים לא אושרה. לבירור פנו למנהלי המערכת:':'פרטיך התקבלו. אפשר יהיה להזמין אולפנים אחרי שמנהל יאשר את ההרשמה. אפשר לעיין בזמינות בינתיים. למנהלי המערכת:')+'</p><p>'+adminsLine()+'</p></div>';
+  }
+  var creatingMember=false;
+  async function ensureMember(){
+    if(creatingMember||!S.db||!S.uid||!S.profile||!S.memberLoaded||S.member)return;
+    creatingMember=true;
+    try{
+      await S.db.doc('members/'+S.uid).set({uid:S.uid,name:S.profile.name||'',email:S.profile.email||'',role:S.profile.year||'',status:isAdmin()?'approved':'pending',createdAt:Date.now()});
+    }catch(e){}
+    creatingMember=false;
+  }
+  async function decideMember(uid,status){
+    if(!isAdmin())return;
+    try{await S.db.doc('members/'+uid).update({status:status,decidedBy:(S.profile&&S.profile.name)||'',decidedAt:Date.now()})}catch(e){}
+  }
+  function membersHTML(){
+    var l=Object.keys(S.members).map(function(k){return S.members[k]}).filter(Boolean);
+    l.sort(function(a,b){var pa=a.status==='pending'?0:1,pb=b.status==='pending'?0:1;return pa-pb||(b.createdAt||0)-(a.createdAt||0)});
+    var h='<h3>בקשות הרשמה ומשתמשים</h3>';
+    if(!l.length)return h+'<div class="card empty"><p style="margin:0">עדיין אין נרשמים.</p></div>';
+    var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר'};
+    return h+'<div class="list">'+l.map(function(m){
+      var u=esc(m.uid),acts='';
+      if(m.status==='pending')acts='<button class="btn" data-act="mem-ok" data-u="'+u+'">אישור</button><button class="btn ghost" data-act="mem-no" data-u="'+u+'">דחייה</button>';
+      else if(m.status==='approved')acts='<button class="btn ghost" data-act="mem-no" data-u="'+u+'">ביטול אישור</button>';
+      else acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">אישור</button>';
+      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(m.status==='pending'?'tag-bl':'lbl')+'">'+tag[m.status||'pending']+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+esc(m.role):'')+'</p></div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
+  }
+
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
   var claiming=false;
   async function ensureAdminClaim(){
+    ensureMember();
     return;
     if(claiming||!S.db||!S.uid||!S.profile||!S.adminsLoaded)return;
     var em=String(S.profile.email||'').toLowerCase();
@@ -591,11 +627,16 @@ textarea{resize:vertical;min-height:64px}
   function adminTab(){return isAdmin()}
   function renderTabs(){
     var t=[['book','הזמנה חדשה'],['mine','האזור שלי']];
-    if(isAdmin())t.push(['all','ניהול']);
+    if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')])}
     $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('');
     $('#who').innerHTML=(S.profile?avatarHTML(S.profile)+'<span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<button class="btn ghost" data-act="logout">התנתקות</button>':'');
   }
   function renderNotice(){
+    renderNotice0();
+    var pc=pendingMembers().length;
+    if(isAdmin()&&pc&&!S.out){var n2=$('#notice');if(n2)n2.insertAdjacentHTML('beforeend','<div class="banner" role="status" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>'+(pc===1?'יש בקשת הרשמה אחת שממתינה':'יש '+pc+' בקשות הרשמה שממתינות')+' לאישור.</span><button class="btn" data-act="tab" data-v="all">לאישור</button></div>')}
+  }
+  function renderNotice0(){
     var n=$('#notice');
     if(S.ready&&S.uid&&!S.db) n.innerHTML='<div class="banner warn">ההרשמה וההזמנה לא זמינות כרגע בדפדפן הזה. אפשר לעיין בזמינות בלבד. נסו לפתוח את הקישור שוב מחשבון מחובר.</div>';
     else{
@@ -645,6 +686,7 @@ textarea{resize:vertical;min-height:64px}
   function renderSide(){
     var el=$('#side'); if(!el)return;
     if(S.step==='done'){el.innerHTML=sideDone();return}
+    if(S.uid&&S.profile&&S.memberLoaded&&!canBook()){el.innerHTML=pendingHTML();return}
     if(isBlocked(S.uid)){el.innerHTML=blockedHTML();return}
     if(S.step==='form'){el.innerHTML=sideForm();return}
     el.innerHTML=sideSlots();
@@ -823,7 +865,7 @@ textarea{resize:vertical;min-height:64px}
     return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+(mine&&!all?mobileLinks(g.studios,g.date,g.from,g.to):'')+tfx+'</div><div class="acts">'+act+'</div></div>';
   }
   function renderAdmin(){
-    var h='<div class="admin">';
+    var h='<div class="admin">'+membersHTML();
     /* סטודנטים עם אי-הגעות */
     var by={},g;
     for(g in S.noshows){var x=S.noshows[g];if(!x||!x.uid)continue;var u=by[x.uid]||(by[x.uid]={uid:x.uid,name:x.name,email:x.email})}
@@ -930,11 +972,9 @@ textarea{resize:vertical;min-height:64px}
   function renderLogin(){
     $('#tabs').innerHTML='';$('#who').innerHTML='';$('#notice').innerHTML='';
     var L=S.login||(S.login={busy:false,sent:'',err:''}),prev=(window.ybAuth&&window.ybAuth.lastError())||'';
-    $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם המייל הארגוני @'+EMAIL_DOMAIN+'. נשלח אליו קישור כניסה, בלי סיסמה.</p></div>'+
-      (L.sent?'<div class="banner" role="status">נשלח קישור כניסה אל <b dir="ltr">'+esc(L.sent)+'</b>. פתחו את המייל (גם את תיקיית הספאם) ולחצו על הקישור. אם לא הגיע תוך כמה דקות, בדקו גם בדואר הזבל או פנו למנהלי המערכת.</div>':'')+
-      '<div class="field"><label class="lbl" for="l-email">מייל ארגוני</label><input id="l-email" type="email" autocomplete="email" dir="ltr" data-t="loginEmail" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.loginEmail||'')+'" style="text-align:right"></div>'+
+    $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם חשבון Google של המכללה, בסיומת @'+EMAIL_DOMAIN+'.</p></div>'+
       ((L.err||prev)?'<p class="err" role="alert">'+esc(L.err||prev)+'</p>':'')+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="login-send"'+(L.busy?' disabled':'')+'>'+(L.busy?'שולח…':(L.sent?'שליחה מחדש':'שליחת קישור כניסה'))+'</button><button class="btn ghost" data-act="login-google"'+(L.busy?' disabled':'')+'>כניסה עם Google</button></div></div>';
+      '<div><button class="btn" data-act="login-google"'+(L.busy?' disabled':'')+'>'+(L.busy?'מתחבר…':'כניסה עם Google')+'</button></div></div>';
   }
   async function googleLogin(){
     var L=S.login||(S.login={busy:false,sent:'',err:''});
@@ -945,17 +985,6 @@ textarea{resize:vertical;min-height:64px}
     }catch(e){
       var c=e&&e.code||'';
       L.err=c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request'?'':c==='auth/operation-not-allowed'?'כניסה עם Google לא מופעלת ב-Firebase (Authentication, Sign-in method, Google).':c==='auth/unauthorized-domain'?'הכתובת של האתר עדיין לא אושרה ב-Firebase (Authorized domains).':c==='auth/popup-blocked'?'הדפדפן חסם את החלון. אשרו חלונות קופצים לאתר ונסו שוב.':'הכניסה עם Google לא הצליחה.'+(c?' (קוד: '+c+')':'');
-    }
-    L.busy=false;renderLogin();
-  }
-  async function sendLogin(){
-    var em=String(S.loginEmail||'').trim().toLowerCase(),L=S.login||(S.login={busy:false,sent:'',err:''});
-    if(!EMAIL_RE.test(em)){L.err='נא להזין מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'.';return renderLogin()}
-    L.busy=true;L.err='';renderLogin();
-    try{await window.ybAuth.send(em);L.sent=em}
-    catch(e){
-      var c=e&&e.code||'';
-      L.err=c==='auth/operation-not-allowed'?'כניסה בקישור במייל לא מופעלת ב-Firebase (Authentication, Sign-in method, Email link).':c==='auth/unauthorized-continue-uri'?'הכתובת של האתר עדיין לא אושרה ב-Firebase (Authorized domains).':(c==='auth/quota-exceeded'||c==='auth/too-many-requests')?'נשלחו יותר מדי בקשות. נסו שוב מאוחר יותר.':'השליחה לא הצליחה. נסו שוב בעוד רגע.'+(c?' (קוד: '+c+')':'');
     }
     L.busy=false;renderLogin();
   }
@@ -1002,7 +1031,9 @@ textarea{resize:vertical;min-height:64px}
     try{
       await profileRef().set(data);
       S.profile=data;S.editing=false;S.regBusy=false;
-      render();ensureAdminClaim().then(function(){});
+      render();
+      if(S.member)S.db.doc('members/'+S.uid).update({name:data.name,email:data.email,role:data.year}).catch(function(){});
+      ensureAdminClaim().then(function(){});
     }catch(e){
       S.regBusy=false;S.regErr='השמירה לא הצליחה. נסו שוב בעוד רגע.';renderReg();
     }
@@ -1023,7 +1054,7 @@ textarea{resize:vertical;min-height:64px}
     var f=S.form,P=S.profile,sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0);
     var people=parseInt(f.people,10);
     if(!P){S.err='כדי להזמין צריך להשלים הרשמה.';return renderSide()}
-    if(isBlocked(S.uid))return renderSide();
+    if(isBlocked(S.uid)||!canBook())return renderSide();
     if(blockedReason(S.date)){S.err='אי אפשר להזמין בתאריך הזה ('+blockedReason(S.date)+').';return renderSide()}
     if(!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
     if(!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
@@ -1084,8 +1115,9 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='tf-decline'){S.tfMsg='';dropTransfer(b.dataset.g,'declined')}
     else if(a==='photo-pick'){var fi=$('#r-photo');if(fi)fi.click()}
     else if(a==='photo-remove'){S.reg.photo='';renderReg()}
-    else if(a==='login-send'){sendLogin()}
     else if(a==='login-google'){googleLogin()}
+    else if(a==='mem-ok'){decideMember(b.dataset.u,'approved')}
+    else if(a==='mem-no'){decideMember(b.dataset.u,'rejected')}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
     else if(a==='plan-open'){openPlan(b)}
@@ -1140,7 +1172,6 @@ textarea{resize:vertical;min-height:64px}
   }
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape')closePlan();
-    if(e.key==='Enter'&&e.target&&e.target.id==='l-email'){e.preventDefault();sendLogin()}
     if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('st')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}
   });
   document.addEventListener('click',function(e){var m=$('#modal');if(m&&!m.hidden&&e.target===m)closePlan()});
@@ -1179,7 +1210,7 @@ textarea{resize:vertical;min-height:64px}
         },function(){S.db=null;renderNotice()});
         function modChanged(){
           if(S.out)return;
-          var bl=isBlocked(S.uid);
+          var bl=isBlocked(S.uid)+'|'+canBook();
           renderTabs();renderNotice();
           if(S.tab==='all'||S.tab==='mine')renderList();
           else if(bl!==S.wasBlocked&&$('#side'))renderSide();
@@ -1192,6 +1223,8 @@ textarea{resize:vertical;min-height:64px}
             S[field]=m;if(flag)S[flag]=true;modChanged();
           },function(){if(flag)S[flag]=true});
         }
+        if(S.canEdit)watch('members','members');
+        db.doc('members/'+S.uid).onSnapshot(function(snap){S.member=snap.exists?snap.data():null;S.memberLoaded=true;modChanged()},function(){S.memberLoaded=true});
         watch('noshows','noshows');watch('transfers','transfers');watch('releases','releases');watch('admins','admins','adminsLoaded');
         if(S.uid){
           profileRef().onSnapshot(function(snap){
