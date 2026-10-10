@@ -561,12 +561,14 @@ textarea{resize:vertical;min-height:64px}
     var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
     return h+'<div class="list">'+l.map(function(m){
       var u=esc(m.uid),st=m.status||'pending',acts='';
-      if(S.confirmRemove===m.uid)acts='<button class="btn danger" data-act="mem-rm-yes" data-u="'+u+'">כן, להסיר</button><button class="btn ghost" data-act="mem-rm-no">ביטול</button>';
+      if(S.confirmPurge===m.uid)acts='<button class="btn danger" data-act="mem-del-yes" data-u="'+u+'">כן, למחוק לגמרי</button><button class="btn ghost" data-act="mem-del-no">ביטול</button>';
+      else if(S.confirmRemove===m.uid)acts='<button class="btn danger" data-act="mem-rm-yes" data-u="'+u+'">כן, להסיר</button><button class="btn ghost" data-act="mem-rm-no">ביטול</button>';
       else{
         if(st==='pending')acts='<button class="btn" data-act="mem-ok" data-u="'+u+'">אישור</button><button class="btn ghost" data-act="mem-no" data-u="'+u+'">דחייה</button>';
         else if(st==='approved')acts='<button class="btn ghost" data-act="mem-no" data-u="'+u+'">ביטול אישור</button>';
         else if(st==='removed')acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">שחזור ואישור</button>';
         else acts='<button class="btn ghost" data-act="mem-ok" data-u="'+u+'">אישור</button>';
+        if((st==='removed'||st==='rejected')&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-del" data-u="'+u+'">מחיקה</button>';
         if(st!=='removed'&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-rm" data-u="'+u+'">הסרה</button>';
       }
       return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+esc(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
@@ -887,6 +889,17 @@ textarea{resize:vertical;min-height:64px}
     return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+(mine&&!all?mobileLinks(g.studios,g.date,g.from,g.to):'')+tfx+'</div><div class="acts">'+act+'</div></div>';
   }
 
+  async function purgeMember(uid){
+    S.confirmPurge=null;
+    var m=S.members[uid];
+    if(!isAdmin()||!m||isAdminEmail(m.email)||(m.status!=='removed'&&m.status!=='rejected'))return render();
+    try{
+      var l=await allDocs('bookings'),t=ds(new Date());
+      if(l)await Promise.all(l.filter(function(x){return x.uid===uid&&x.date>=t}).map(function(x){return S.db.doc('bookings/'+x._id).delete()}));
+      await S.db.doc('members/'+uid).delete();
+    }catch(e){}
+    render();
+  }
   var PH_EMAIL='photography@edu.jmc.ac.il';
   function lsG(k){try{return localStorage.getItem(k)}catch(e){return null}}
   function lsS(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -1250,6 +1263,9 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='clean-ask'){S.cleanStep='ask';S.cleanMsg='';render()}
     else if(a==='clean-no'){S.cleanStep=null;render()}
     else if(a==='clean-yes'){cleanYear()}
+    else if(a==='mem-del'){S.confirmPurge=b.dataset.u;render()}
+    else if(a==='mem-del-no'){S.confirmPurge=null;render()}
+    else if(a==='mem-del-yes'){purgeMember(b.dataset.u)}
     else if(a==='mem-ok'){decideMember(b.dataset.u,'approved')}
     else if(a==='mem-no'){decideMember(b.dataset.u,'rejected')}
     else if(a==='mem-rm'){S.confirmRemove=b.dataset.u;renderList()}
