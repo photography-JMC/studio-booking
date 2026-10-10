@@ -280,6 +280,10 @@ textarea{resize:vertical;min-height:64px}
   function mkQuery(x,name,cons){
     return {
       where:function(f,op,v){return mkQuery(x,name,cons.concat([[f,op,v]]))},
+      get:async function(){
+        var F=x.F,q=F.query.apply(null,[F.collection(x.fs,name)].concat(cons.map(function(c){return F.where(c[0],c[1],c[2])})));
+        return wrapSnap(await F.getDocs(q));
+      },
       onSnapshot:function(cb,err){
         var F=x.F,q=F.query.apply(null,[F.collection(x.fs,name)].concat(cons.map(function(c){return F.where(c[0],c[1],c[2])})));
         return F.onSnapshot(q,function(s){cb(wrapSnap(s))},function(e){if(err)err(e)});
@@ -527,10 +531,11 @@ textarea{resize:vertical;min-height:64px}
   }
   var creatingMember=false;
   async function ensureMember(){
+    if(S.member&&S.profile&&S.profile.phone&&S.member.phone!==S.profile.phone&&S.uid&&S.db&&!S.member.__ph){S.member.__ph=1;S.db.doc('members/'+S.uid).update({phone:S.profile.phone}).catch(function(){})}
     if(creatingMember||!S.db||!S.uid||!S.profile||!S.memberLoaded||S.member)return;
     creatingMember=true;
     try{
-      await S.db.doc('members/'+S.uid).set({uid:S.uid,name:S.profile.name||'',email:S.profile.email||'',role:S.profile.year||'',status:isAdmin()?'approved':'pending',createdAt:Date.now()});
+      await S.db.doc('members/'+S.uid).set({uid:S.uid,name:S.profile.name||'',email:S.profile.email||'',role:S.profile.year||'',phone:S.profile.phone||'',status:isAdmin()?'approved':'pending',createdAt:Date.now()});
     }catch(e){}
     creatingMember=false;
   }
@@ -881,8 +886,114 @@ textarea{resize:vertical;min-height:64px}
     if(!act&&mine) act='<span class="lbl">אי אפשר לבטל פחות מ-'+(CANCEL_LEAD_H===2?'שעתיים':CANCEL_LEAD_H+' שעות')+' לפני</span>';
     return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+(mine&&!all?mobileLinks(g.studios,g.date,g.from,g.to):'')+tfx+'</div><div class="acts">'+act+'</div></div>';
   }
+
+  var PH_EMAIL='photography@edu.jmc.ac.il';
+  function lsG(k){try{return localStorage.getItem(k)}catch(e){return null}}
+  function lsS(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  function toolsHTML(){
+    if(!isAdmin())return '';
+    var last=Number(lsG('yb_lastExport')||0),due=!last||Date.now()-last>30*86400000;
+    var h='<h3>דוחות וניקוי</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">';
+    h+='<p style="margin:0">'+(last?'הדוח האחרון הורד ב־'+new Date(last).toLocaleDateString('he-IL')+'.':'עדיין לא הורד דוח במכשיר הזה.')+(due?' <b>הגיע הזמן לדוח חודשי: הורידו אותו ושלחו אל '+PH_EMAIL+'.</b>':'')+'</p>';
+    h+='<div class="acts"><button class="btn" data-act="export-xlsx">הורדת דוח Excel</button><a class="btn ghost" href="mailto:'+PH_EMAIL+'?subject='+encodeURIComponent('דוח חודשי: הזמנת אולפנים')+'&body='+encodeURIComponent('מצורף הדוח החודשי. (יש לצרף את קובץ ה־Excel שהורד.)')+'">פתיחת מייל אל '+PH_EMAIL+'</a></div>';
+    h+='<p class="tfnote" style="margin:0">הדוח כולל שלוש לשוניות: משתמשים, הזמנות ואי-הגעות. הקובץ מצורף למייל ידנית.</p>';
+    if(S.cleanStep==='ask')h+='<div class="banner" role="alert" style="padding:12px"><p style="margin:0 0 10px"><b>ניקוי סוף שנה:</b> יימחקו כל ההזמנות שהסתיימו, האי-הגעות, השחרורים ובקשות ההעברה. המשתמשים הרשומים וההזמנות העתידיות יישארו. לפני המחיקה יורד דוח Excel אוטומטית. אי אפשר לשחזר.</p><div class="acts"><button class="btn danger" data-act="clean-yes">כן, להוריד דוח ולנקות</button><button class="btn ghost" data-act="clean-no">ביטול</button></div></div>';
+    else h+='<div class="acts"><button class="btn ghost" data-act="clean-ask"'+(S.cleanStep==='busy'?' disabled':'')+'>ניקוי סוף שנה</button></div>';
+    if(S.cleanMsg)h+='<p role="status" style="margin:0"><b>'+esc(S.cleanMsg)+'</b></p>';
+    return h+'</div>';
+  }
+  function crc32(b){var t=crc32.t,c,k,n;if(!t){t=crc32.t=[];for(n=0;n<256;n++){c=n;for(k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}}var r=-1;for(n=0;n<b.length;n++)r=t[(r^b[n])&255]^(r>>>8);return(r^-1)>>>0}
+  function zipStore(files){
+    var enc=new TextEncoder(),parts=[],cd=[],off=0,cdSize=0;
+    files.forEach(function(f){
+      var nm=enc.encode(f.name),data=enc.encode(f.text),crc=crc32(data),sz=data.length;
+      var lh=new DataView(new ArrayBuffer(30));
+      lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+      parts.push(new Uint8Array(lh.buffer),nm,data);
+      var ch=new DataView(new ArrayBuffer(46));
+      ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+      cd.push(new Uint8Array(ch.buffer),nm);
+      off+=30+nm.length+sz;cdSize+=46+nm.length;
+    });
+    var e=new DataView(new ArrayBuffer(22));
+    e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cdSize,true);e.setUint32(16,off,true);
+    return new Blob(parts.concat(cd,[new Uint8Array(e.buffer)]),{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  }
+  function xesc(v){return String(v==null?'':v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  function colL(i){var s='';i++;while(i>0){var m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s}
+  function sheetXml(rows){
+    var w=0;rows.forEach(function(r){if(r.length>w)w=r.length});
+    var x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="'+Math.max(w,1)+'" width="22" customWidth="1"/></cols><sheetData>';
+    rows.forEach(function(r,i){
+      x+='<row r="'+(i+1)+'">';
+      r.forEach(function(v,j){x+='<c r="'+colL(j)+(i+1)+'" t="inlineStr"'+(i===0?' s="1"':'')+'><is><t xml:space="preserve">'+xesc(v)+'</t></is></c>'});
+      x+='</row>';
+    });
+    return x+'</sheetData></worksheet>';
+  }
+  function buildXlsx(sheets){
+    var n=sheets.length,i,ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+    var wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+    var rel='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+    var files=[];
+    for(i=0;i<n;i++){
+      ct+='<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+      wb+='<sheet name="'+xesc(sheets[i].name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>';
+      rel+='<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>';
+      files.push({name:'xl/worksheets/sheet'+(i+1)+'.xml',text:sheetXml(sheets[i].rows)});
+    }
+    rel+='<Relationship Id="rId'+(n+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+    ct+='</Types>';wb+='</sheets></workbook>';
+    files.unshift({name:'[Content_Types].xml',text:ct},
+      {name:'_rels/.rels',text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+      {name:'xl/workbook.xml',text:wb},{name:'xl/_rels/workbook.xml.rels',text:rel},
+      {name:'xl/styles.xml',text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>'});
+    return zipStore(files);
+  }
+  async function allDocs(name){
+    try{var r=await S.db.collection(name).get();return r.docs.map(function(d){return Object.assign({_id:d.id},d.data())})}catch(e){return null}
+  }
+  function dmy(s){var p=String(s||'').split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:String(s||'')}
+  async function exportXlsx(){
+    if(!isAdmin())return;
+    var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
+    var users=[['שם','מייל','טלפון','תפקיד','סטטוס','תאריך הרשמה']];
+    Object.keys(S.members).map(function(k){return S.members[k]}).filter(Boolean).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'he')}).forEach(function(m){
+      users.push([m.name||'',m.email||'',m.phone||'',m.role||'',tag[m.status||'pending']||'',m.createdAt?new Date(m.createdAt).toLocaleDateString('he-IL'):''])});
+    var bk=await allDocs('bookings');
+    if(!bk){bk=Object.keys(S.bookings).map(function(k){return S.bookings[k]})}
+    var by={};
+    bk.forEach(function(x){if(!x||!x.uid)return;var g=x.gid||x._id,o=by[g]||(by[g]={date:x.date,lo:99,hi:-1,st:{},name:x.name,email:x.email,role:x.year,purpose:x.purpose,people:x.people,notes:x.notes});
+      o.lo=Math.min(o.lo,x.hour);o.hi=Math.max(o.hi,x.hour);o.st[x.studio]=1});
+    var rows=Object.keys(by).map(function(g){return by[g]}).sort(function(a,b){return String(a.date).localeCompare(String(b.date))||a.lo-b.lo});
+    var bookings=[['תאריך','משעה','עד שעה','עמדות','שם','מייל','תפקיד','מטרה','משתתפים','הערות']];
+    rows.forEach(function(o){bookings.push([dmy(o.date),hh(o.lo),hh(o.hi+1),namesOf(Object.keys(o.st)),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.notes||''])});
+    var ns=await allDocs('noshows');if(!ns)ns=Object.keys(S.noshows).map(function(k){return S.noshows[k]});
+    var nos=[['שם','מייל','תאריך הזמנה']];
+    ns.forEach(function(x){if(x&&x.uid)nos.push([x.name||'',x.email||'',x.endAt?new Date(x.endAt).toLocaleDateString('he-IL'):''])});
+    var blob=buildXlsx([{name:'משתמשים',rows:users},{name:'הזמנות',rows:bookings},{name:'אי-הגעות',rows:nos}]);
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='studio-report-'+ds(new Date())+'.xlsx';document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
+    lsS('yb_lastExport',String(Date.now()));
+  }
+  async function cleanYear(){
+    if(!isAdmin())return;
+    S.cleanStep='busy';S.cleanMsg='מוריד דוח ומנקה, נא להמתין…';render();
+    var n=0;
+    try{
+      await exportXlsx();
+      var today=ds(new Date()),del=[];
+      var bk=await allDocs('bookings');if(!bk)throw new Error('read');
+      bk.forEach(function(x){if(x.date&&x.date<today)del.push('bookings/'+x._id)});
+      ['noshows','releases','transfers'].forEach(function(c){});
+      for(var c of ['noshows','releases','transfers']){var l=await allDocs(c);if(!l)throw new Error('read');l.forEach(function(x){del.push(c+'/'+x._id)})}
+      for(var i=0;i<del.length;i+=20){await Promise.all(del.slice(i,i+20).map(function(p){return S.db.doc(p).delete().then(function(){n++})}))}
+      S.cleanMsg='הניקוי הושלם: נמחקו '+n+' רשומות.';
+    }catch(e){S.cleanMsg='הניקוי הופסק (נמחקו '+n+' רשומות). אפשר לנסות שוב.'}
+    S.cleanStep=null;render();
+  }
   function renderAdmin(){
-    var h='<div class="admin">'+membersHTML();
+    var h='<div class="admin">'+membersHTML()+toolsHTML();
     /* סטודנטים עם אי-הגעות */
     var by={},g;
     for(g in S.noshows){var x=S.noshows[g];if(!x||!x.uid)continue;var u=by[x.uid]||(by[x.uid]={uid:x.uid,name:x.name,email:x.email})}
@@ -1051,7 +1162,7 @@ textarea{resize:vertical;min-height:64px}
       await profileRef().set(data);
       S.profile=data;S.editing=false;S.regBusy=false;
       render();
-      if(S.member)S.db.doc('members/'+S.uid).update({name:data.name,email:data.email,role:data.year}).catch(function(){});
+      if(S.member)S.db.doc('members/'+S.uid).update({name:data.name,email:data.email,role:data.year,phone:data.phone||''}).catch(function(){});
       ensureAdminClaim().then(function(){});
     }catch(e){
       S.regBusy=false;S.regErr='השמירה לא הצליחה. נסו שוב בעוד רגע.';renderReg();
@@ -1135,6 +1246,10 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='photo-pick'){var fi=$('#r-photo');if(fi)fi.click()}
     else if(a==='photo-remove'){S.reg.photo='';renderReg()}
     else if(a==='login-google'){googleLogin()}
+    else if(a==='export-xlsx'){exportXlsx().then(render)}
+    else if(a==='clean-ask'){S.cleanStep='ask';S.cleanMsg='';render()}
+    else if(a==='clean-no'){S.cleanStep=null;render()}
+    else if(a==='clean-yes'){cleanYear()}
     else if(a==='mem-ok'){decideMember(b.dataset.u,'approved')}
     else if(a==='mem-no'){decideMember(b.dataset.u,'rejected')}
     else if(a==='mem-rm'){S.confirmRemove=b.dataset.u;renderList()}
