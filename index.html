@@ -411,7 +411,7 @@ textarea{resize:vertical;min-height:64px}
     step:'slots',err:'',busy:false,done:null,confirmCancel:null,
     bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,confirmRemove:null,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
-    reg:{name:'',sid:'',year:'',email:'',phone:'',agree:false},
+    reg:{name:'',year:'',email:'',agree:false},
     form:{purpose:'',people:1,notes:''}
   };
   function needReg(){return S.ready&&S.db&&S.uid&&S.profileLoaded&&(!S.profile||S.editing)}
@@ -434,17 +434,6 @@ textarea{resize:vertical;min-height:64px}
   function selStudios(){return S.studios.map(function(id){return studioOf(id)}).filter(Boolean)}
   function namesOf(ids){return (ids||[]).map(function(id){var t=studioOf(id);return t?t.name:id}).join(', ')}
   /* ----- שליחת פרטי ההזמנה לנייד (פתיחת אפליקציית ההודעות או וואטסאפ עם נוסח מוכן) ----- */
-  function phoneLocal(){var d=String((S.profile&&S.profile.phone)||'').replace(/\D/g,'');if(d.indexOf('972')===0)d='0'+d.slice(3);return d}
-  function confirmText(studios,date,from,to){
-    return 'אישור הזמנת אולפן\n'+namesOf(studios)+'\n'+fmtLong(parse(date))+'\n'+hh(from)+'–'+hh(to)+'\nבמקרה שאין אפשרות להגיע, נא לבטל מראש באפליקציה. החוג לתקשורת צילומית, המרכז האקדמי הרב תחומי ירושלים';
-  }
-  function mobileLinks(studios,date,from,to){
-    var ph=phoneLocal();if(!/^05\d{8}$/.test(ph))return '';
-    var t=encodeURIComponent(confirmText(studios,date,from,to));
-    return '<div class="sendm"><span class="lbl">שליחת פרטי ההזמנה לנייד '+esc(ph.slice(0,3)+'-'+ph.slice(3))+'</span><div class="sendm-b">'+
-      '<a class="btn ghost" target="_blank" rel="noopener" href="sms:'+ph+'?&body='+t+'">הודעת SMS</a>'+
-      '<a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/972'+ph.slice(1)+'?text='+t+'">וואטסאפ</a></div></div>';
-  }
   /* ----- העברת מקום לסטודנט אחר ----- */
   function myEmail(){return String((S.profile&&S.profile.email)||'').toLowerCase()}
   function incoming(){
@@ -531,11 +520,11 @@ textarea{resize:vertical;min-height:64px}
   }
   var creatingMember=false;
   async function ensureMember(){
-    if(S.member&&S.profile&&S.profile.phone&&S.member.phone!==S.profile.phone&&S.uid&&S.db&&!S.member.__ph){S.member.__ph=1;S.db.doc('members/'+S.uid).update({phone:S.profile.phone}).catch(function(){})}
+    if(S.member&&S.member.phone&&S.uid&&S.db&&!S.member.__ph){S.member.__ph=1;S.db.doc('members/'+S.uid).update({phone:''}).catch(function(){})}
     if(creatingMember||!S.db||!S.uid||!S.profile||!S.memberLoaded||S.member)return;
     creatingMember=true;
     try{
-      await S.db.doc('members/'+S.uid).set({uid:S.uid,name:S.profile.name||'',email:S.profile.email||'',role:S.profile.year||'',phone:S.profile.phone||'',status:isAdmin()?'approved':'pending',createdAt:Date.now()});
+      await S.db.doc('members/'+S.uid).set({uid:S.uid,name:S.profile.name||'',email:S.profile.email||'',role:S.profile.year||'',status:isAdmin()?'approved':'pending',createdAt:Date.now()});
     }catch(e){}
     creatingMember=false;
   }
@@ -764,7 +753,7 @@ textarea{resize:vertical;min-height:64px}
     var d=S.done;
     return '<div class="done"><div class="check"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11.5l4 4 8-9"/></svg></div>'+
       '<h3>ההזמנה נשמרה</h3><div class="sum" style="width:100%"><b>'+d.studios.map(function(id){var t=studioOf(id);return esc(t?t.name:id)}).join('<br>')+'</b><span>'+esc(fmtLong(parse(d.date)))+'</span><span>'+rng(d.from,d.to)+'</span></div>'+
-      mobileLinks(d.studios,d.date,d.from,d.to)+'<button class="btn" data-act="more" style="width:100%">הזמנה נוספת</button>'+
+      '<button class="btn" data-act="more" style="width:100%">הזמנה נוספת</button>'+
       '<button class="btn ghost" data-act="tab" data-v="mine" style="width:100%">לאזור האישי</button></div>';
   }
   /* ----- מפת האולפנים: לחיצה על עמדה בוחרת אותה. גרסה קטנה בצד, גרסה גדולה בחלון קופץ ----- */
@@ -970,9 +959,9 @@ textarea{resize:vertical;min-height:64px}
   async function exportXlsx(){
     if(!isAdmin())return;
     var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
-    var users=[['שם','מייל','טלפון','תפקיד','סטטוס','תאריך הרשמה']];
+    var users=[['שם','מייל','תפקיד','סטטוס','תאריך הרשמה']];
     Object.keys(S.members).map(function(k){return S.members[k]}).filter(Boolean).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'he')}).forEach(function(m){
-      users.push([m.name||'',m.email||'',m.phone||'',m.role||'',tag[m.status||'pending']||'',m.createdAt?new Date(m.createdAt).toLocaleDateString('he-IL'):''])});
+      users.push([m.name||'',m.email||'',m.role||'',tag[m.status||'pending']||'',m.createdAt?new Date(m.createdAt).toLocaleDateString('he-IL'):''])});
     var bk=await allDocs('bookings');
     if(!bk){bk=Object.keys(S.bookings).map(function(k){return S.bookings[k]})}
     var by={};
@@ -1071,10 +1060,8 @@ textarea{resize:vertical;min-height:64px}
       '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'. הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
       '<div class="photo-row">'+avatarHTML({photo:r.photo,name:r.name},'xl')+'<div class="photo-btns"><button type="button" class="btn ghost" data-act="photo-pick">'+(r.photo?'החלפת תמונה':'העלאת תמונת פרופיל')+'</button>'+(r.photo?'<button type="button" class="btn ghost" data-act="photo-remove">הסרה</button>':'')+'<input type="file" id="r-photo" accept="image/*" data-photo="1" hidden><span class="lbl" style="flex-basis:100%">אפשר גם בלי תמונה. התמונה מוצגת רק לך.</span></div></div>'+
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="r-sid">מספר סטודנט / תעודת זהות</label><input id="r-sid" inputmode="numeric" dir="ltr" data-r="sid" value="'+esc(r.sid)+'" style="text-align:right"></div>'+
-      '<div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="r-email">מייל ארגוני</label><input id="r-email" type="email" autocomplete="email" dir="ltr" data-r="email" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.authEmail||r.email)+'"'+(S.authEmail?' readonly':'')+' style="text-align:right"></div>'+
-      '<div class="field"><label class="lbl" for="r-phone">מספר נייד</label><input id="r-phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" data-r="phone" placeholder="050-1234567" value="'+esc(r.phone)+'" style="text-align:right"></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
+      '<div class="field"><label class="lbl" for="r-email">מייל ארגוני</label><input id="r-email" type="email" autocomplete="email" dir="ltr" data-r="email" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.authEmail||r.email)+'"'+(S.authEmail?' readonly':'')+' style="text-align:right"></div></div>'+
       (edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+
       (S.regErr?'<p class="err" role="alert">'+esc(S.regErr)+'</p>':'')+
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="reg-save"'+(S.regBusy?' disabled':'')+'>'+(S.regBusy?'שומר…':(edit?'שמירה':'סיום הרשמה'))+'</button>'+
@@ -1104,7 +1091,7 @@ textarea{resize:vertical;min-height:64px}
     var del=S.confirmDelete?'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" data-act="del-yes">כן, למחוק את הפרופיל</button><button class="btn ghost" data-act="del-no">ביטול</button></div>'
       :'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="reg-edit">עריכת פרטים</button><button class="btn ghost" data-act="del-ask">מחיקת פרופיל</button></div>';
     $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head">'+avatarHTML(P,true)+'<div><h2>'+esc(P.name)+'</h2><span class="lbl">'+esc(P.year||'')+'</span></div></div>'+
-      '<dl class="kv"><dt>מס׳ סטודנט / ת״ז</dt><dd class="t">'+esc(P.sid)+'</dd><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd><dt>נייד</dt><dd class="t">'+esc(P.phone)+'</dd></dl>'+
+      '<dl class="kv"><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd></dl>'+
       '<div class="stats"><div><b>'+up.length+'</b><span>הזמנות קרובות</span></div><div><b>'+mh+'</b><span>שעות החודש</span></div><div><b>'+th+'</b><span>סה״כ שעות</span></div></div>'+del+
       (S.confirmDelete?'<p class="lbl" style="margin:0">מחיקת הפרופיל מוחקת רק את הפרטים האישיים. הזמנות קיימות נשארות עד לביטול.</p>':'')+'</aside>'+
       '<div class="sect"><h3>הזמנות קרובות</h3>'+upItems+'<h3>היסטוריה</h3>'+histItems+'</div></div>';
@@ -1156,26 +1143,22 @@ textarea{resize:vertical;min-height:64px}
   function profileRef(){return S.db.doc('data/users/'+S.uid+'/profile')}
   async function saveProfile(){
     var r=S.reg,edit=!!S.profile;
-    var name=(r.name||'').trim(),sid=(r.sid||'').trim(),email=(r.email||'').trim(),phone=(r.phone||'').trim();
+    var name=(r.name||'').trim(),email=(r.email||'').trim();
     if(!name){S.regErr='נא למלא שם מלא.';return renderReg()}
-    if(!/^\d{5,10}$/.test(sid)){S.regErr='מספר סטודנט או תעודת זהות הם 5 עד 10 ספרות.';return renderReg()}
     if(!r.year){S.regErr='נא לבחור תפקיד.';return renderReg()}
     email=email.toLowerCase();
     if(S.authEmail)email=S.authEmail;
     if(!EMAIL_RE.test(email)){S.regErr='ההרשמה אפשרית רק עם מייל ארגוני בסיומת @'+EMAIL_DOMAIN+'.';return renderReg()}
     var ac=S.admins[admKey(email)];
     if(isAdminEmail(email)&&ac&&ac.uid&&ac.uid!==S.uid&&!S.canEdit){S.regErr='המייל הזה שמור למנהל מערכת ורשום כבר בחשבון אחר.';return renderReg()}
-    var dg=phone.replace(/[\s\-()]/g,'').replace(/^\+972/,'0').replace(/^972/,'0');
-    if(!/^05\d{8}$/.test(dg)){S.regErr='נא להזין מספר נייד ישראלי תקין, למשל 050-1234567.';return renderReg()}
-    phone=dg.slice(0,3)+'-'+dg.slice(3);
     if(!edit&&!r.agree){S.regErr='כדי להירשם צריך לאשר את ההתחייבות.';return renderReg()}
     S.regErr='';S.regBusy=true;renderReg();
-    var data={name:name,sid:sid,year:r.year,email:email,phone:phone,photo:r.photo||'',createdAt:(S.profile&&S.profile.createdAt)||Date.now(),updatedAt:Date.now()};
+    var data={name:name,year:r.year,email:email,photo:r.photo||'',createdAt:(S.profile&&S.profile.createdAt)||Date.now(),updatedAt:Date.now()};
     try{
       await profileRef().set(data);
       S.profile=data;S.editing=false;S.regBusy=false;
       render();
-      if(S.member)S.db.doc('members/'+S.uid).update({name:data.name,email:data.email,role:data.year,phone:data.phone||''}).catch(function(){});
+      if(S.member)S.db.doc('members/'+S.uid).update({name:data.name,email:data.email,role:data.year}).catch(function(){});
       ensureAdminClaim().then(function(){});
     }catch(e){
       S.regBusy=false;S.regErr='השמירה לא הצליחה. נסו שוב בעוד רגע.';renderReg();
@@ -1306,7 +1289,7 @@ textarea{resize:vertical;min-height:64px}
     else if(a==='cancel-no'){S.confirmCancel=null;renderList()}
     else if(a==='cancel-yes'){cancelGroup(b.dataset.g)}
     else if(a==='reg-save'){saveProfile()}
-    else if(a==='reg-edit'){var p=S.profile||{};S.reg={name:p.name||'',sid:p.sid||'',year:p.year||'',email:p.email||'',phone:p.phone||'',photo:p.photo||'',agree:true};S.editing=true;S.regErr='';render()}
+    else if(a==='reg-edit'){var p=S.profile||{};S.reg={name:p.name||'',year:p.year||'',email:p.email||'',photo:p.photo||'',agree:true};S.editing=true;S.regErr='';render()}
     else if(a==='reg-cancel'){S.editing=false;S.regErr='';render()}
     else if(a==='del-ask'){S.confirmDelete=true;renderList()}
     else if(a==='del-no'){S.confirmDelete=false;renderList()}
@@ -1356,7 +1339,7 @@ textarea{resize:vertical;min-height:64px}
   document.addEventListener('change',onField);
   async function deleteProfile(){
     S.confirmDelete=false;
-    try{await profileRef().delete();S.profile=null;S.reg={name:'',sid:'',year:'',email:'',phone:'',agree:false};S.tab='book'}catch(e){}
+    try{await profileRef().delete();S.profile=null;S.reg={name:'',year:'',email:'',agree:false};S.tab='book'}catch(e){}
     render();
   }
 
@@ -1409,6 +1392,7 @@ textarea{resize:vertical;min-height:64px}
             S.profileLoaded=true;
             if(!changed||S.regBusy)return;
             S.profile=p;
+            if(p&&(p.sid!==undefined||p.phone!==undefined)&&!S.__clean){S.__clean=1;var q=Object.assign({},p);delete q.sid;delete q.phone;profileRef().set(q).then(function(){S.profile=q}).catch(function(){})}
             if(!S.editing)render();
             ensureAdminClaim();
           },function(){S.profileLoaded=true});
