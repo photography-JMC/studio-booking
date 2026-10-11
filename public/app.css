@@ -1,3 +1,4 @@
+
 /* Layout: three-column booking card (studio info | month calendar | time slots), stacks to one column on phones. */
 :root{
   --bg:#F2F1F0; --surface:#FFFFFF; --ink:#231F20; --muted:#6B6566; --line:#DAD7D5;
