@@ -15,7 +15,7 @@ export const STUDIOS = [
 ];
 
 export const RULES = {
-  OPEN: 8, CLOSE: 21,
+  OPEN: 8, CLOSE: 18,
   MAX_DAY: 4,          // שעות ביום לסטודנט
   CANCEL_LEAD_H: 2,    // ביטול והעברה עד שעתיים לפני
   MAX_STATIONS: 8,
@@ -42,7 +42,7 @@ export const CLOSED_RANGES = [
   ['2027-06-10', '2027-06-11', 'שבועות'],
 ];
 // ימים שבהם המכללה נסגרת מוקדם: שעת הסגירה
-export const SHORT_DAYS = { '2027-05-03': 19, '2027-05-10': 17, '2027-05-11': 14 };
+export const SHORT_DAYS = { '2027-05-10': 17, '2027-05-11': 14 };
 
 export const YEARS = ['סטודנט', 'מרצה', 'מתרגל', 'מדריך', 'אורח'];
 export const PURPOSES = ['תרגיל קורס', 'פרויקט גמר', 'פרויקט אישי', 'צילום לתיק עבודות', 'אחר'];
