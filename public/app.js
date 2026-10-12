@@ -274,7 +274,8 @@
     out.sort(function(a,b){var c=(a.date+pad(a.from)).localeCompare(b.date+pad(b.from));return past?-c:c});
     return out;
   }
-  function roleChip(r){var k={'סטודנט':'s','מרצה':'l','מתרגל':'t','מדריך':'i','אורח':'g'}[r];return r?'<span class="role'+(k?' r-'+k:'')+'">'+esc(r)+'</span>':''}
+  var ROLE_KEYS={'סטודנט':'s','מרצה':'l','מתרגל':'t','מדריך':'i','אורח':'g'};
+  function roleChip(r){var k=ROLE_KEYS[r];return r?'<span class="role'+(k?' r-'+k:'')+'">'+esc(r)+'</span>':''}
   function avatarHTML(p,big){
     var c='avatar'+(big==='xl'?' xl':big?' lg':'');
     if(p&&p.photo)return '<span class="'+c+'"><img src="'+esc(p.photo)+'" alt=""></span>';
@@ -431,7 +432,7 @@
     if(!S.date)return '';
     var gs={},k,b,x;
     for(k in S.bookings){b=S.bookings[k];if(b.studio!==id||b.date!==S.date)continue;
-      x=gs[b.gid]||(gs[b.gid]={sys:b.uid==='sys-classes',name:b.name||'',from:b.hour,to:b.hour+1});
+      x=gs[b.gid]||(gs[b.gid]={sys:b.uid==='sys-classes',name:b.name||'',role:b.year||'',from:b.hour,to:b.hour+1});
       if(b.hour<x.from)x.from=b.hour;if(b.hour+1>x.to)x.to=b.hour+1}
     var all=Object.keys(gs).map(function(i){return gs[i]});
     if(!all.length)return '';
@@ -446,7 +447,7 @@
     if(!real.length){extra='';tm=''}
     var up=id==='bf4'||id==='bb2',y1=up?p[1]-57-40:p[1]+57+34;
     var y2=y1+32;
-    return '<g class="lab" aria-hidden="true"><text class="nm" x="'+p[0]+'" y="'+y1+'">'+esc(nm)+extra+'</text>'+(tm?'<text class="tm" x="'+p[0]+'" y="'+y2+'">'+tm+'</text>':'')+'</g>';
+    return '<g class="lab" aria-hidden="true"><text class="nm'+(real.length&&ROLE_KEYS[first.role]?' rc-'+ROLE_KEYS[first.role]:'')+'" x="'+p[0]+'" y="'+y1+'">'+esc(nm)+extra+'</text>'+(tm?'<text class="tm" x="'+p[0]+'" y="'+y2+'">'+tm+'</text>':'')+'</g>';
   }
   function planSvg(mini){
     var g='';
@@ -477,7 +478,7 @@
     return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-h">'+
       '<div class="modal-head"><h2 id="pm-h">מפת האולפנים</h2><button class="btn ghost" id="pm-x" data-act="plan-close">סיום</button></div>'+
       (S.date?'<p class="plan-note">שמות המזמינים מוצגים לתאריך: <b>'+esc(fmtLong(parse(S.date)))+'</b></p>':'')+
-      '<p class="scrollhint">אפשר לגלול הצידה כדי לראות את כל המפה</p>'+planSvg(false)+
+      '<p class="scrollhint">אפשר לגלול הצידה כדי לראות את כל המפה</p>'+'<div class="planrow"><div class="roleidx" aria-label="אינדקס סוגי מזמינים"><b>סוג המזמין</b>'+Object.keys(ROLE_KEYS).map(function(r){return '<span><i class="rc-bg-'+ROLE_KEYS[r]+'"></i>'+r+'</span>'}).join('')+'</div><div class="plancol">'+planSvg(false)+'</div></div>'+
       '<p class="plan-note">לחצו על עמדות כדי לבחור כמה במקביל (עד '+MAX_STATIONS+'). נבחרו: <b>'+esc(Array.isArray(names)?names.join(' · '):names)+'</b></p>'+
       '<div class="legend"><span><i style="background:var(--ink)"></i>עמדה</span><span><i style="background:var(--accent);outline:2px solid var(--ink)"></i>עמדה שנבחרה</span><span><i style="background:var(--muted);opacity:.6"></i>אין שעות פנויות בתאריך</span></div></div>';
   }
