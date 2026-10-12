@@ -45,5 +45,5 @@ export const CLOSED_RANGES = [
 export const SHORT_DAYS = { '2027-05-10': 17, '2027-05-11': 14 };
 
 export const YEARS = ['סטודנט', 'מרצה', 'מתרגל', 'מדריך', 'אורח'];
-export const PURPOSES = ['תרגיל קורס', 'פרויקט גמר', 'פרויקט אישי', 'צילום לתיק עבודות', 'אחר'];
+export const PURPOSES = ['תרגיל קורס', 'פרויקט גמר', 'פרויקט אישי', 'צילום לתיק עבודות', 'האקתון', 'אחר'];
 export const TIMEZONE = 'Asia/Jerusalem';
