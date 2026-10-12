@@ -429,16 +429,21 @@
   /* שם המזמין ליד העמדה בתאריך שנבחר (במפה הגדולה) */
   function stationLabel(id,p){
     if(!S.date)return '';
-    var by={},order=[],k,b;
+    var gs={},k,b,x;
     for(k in S.bookings){b=S.bookings[k];if(b.studio!==id||b.date!==S.date)continue;
-      var u=by[b.uid];if(!u){u=by[b.uid]={name:b.name||'',from:b.hour,to:b.hour+1};order.push(b.uid)}
-      if(b.hour<u.from)u.from=b.hour;if(b.hour+1>u.to)u.to=b.hour+1}
-    if(!order.length)return '';
-    order.sort(function(a,c){return by[a].from-by[c].from});
-    var first=by[order[0]],nm=first.name;
+      x=gs[b.gid]||(gs[b.gid]={sys:b.uid==='sys-classes',name:b.name||'',from:b.hour,to:b.hour+1});
+      if(b.hour<x.from)x.from=b.hour;if(b.hour+1>x.to)x.to=b.hour+1}
+    var all=Object.keys(gs).map(function(i){return gs[i]});
+    if(!all.length)return '';
+    var real=all.filter(function(g){return !g.sys}).sort(function(a,c){return a.from-c.from}),
+        cls=all.filter(function(g){return g.sys}).sort(function(a,c){return a.from-c.from}),
+        list=real.length?real:cls,first=list[0],nm;
+    if(real.length)nm=first.name;
+    else nm=first.name.indexOf('תיאום עם')===0?'תיאום עם ירדן':'שיעור';
     if(nm.length>13)nm=nm.slice(0,12)+'…';
-    var extra=order.length>1?' +'+(order.length-1):'';
-    var tm=order.length>1?'':'\u2066'+hh(first.from)+'–'+hh(first.to)+'\u2069';
+    var extra=list.length>1?' +'+(list.length-1):'';
+    var tm=list.length>1?'':'\u2066'+hh(first.from)+'–'+hh(first.to)+'\u2069';
+    if(!real.length){extra='';tm=''}
     var up=id==='bf4'||id==='bb2',y1=up?p[1]-57-40:p[1]+57+34;
     var y2=y1+32;
     return '<g class="lab" aria-hidden="true"><text class="nm" x="'+p[0]+'" y="'+y1+'">'+esc(nm)+extra+'</text>'+(tm?'<text class="tm" x="'+p[0]+'" y="'+y2+'">'+tm+'</text>':'')+'</g>';
