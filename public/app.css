@@ -213,3 +213,10 @@ textarea{resize:vertical;min-height:64px}
 @media (pointer:coarse){.slot{touch-action:pan-x;-webkit-user-select:none;user-select:none}}
 
 .credit{margin-top:36px;padding:14px 0 6px;text-align:center;font-size:13px;line-height:1.7;color:#6b6b6b}body.lg .credit{color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.8)}.logo{height:96px!important}@media(max-width:600px){.logo{height:68px!important}}h1{font-size:22px!important}[hidden]{display:none!important}body.lg{background:#2a2a2a}body.lg::before{content:"";position:fixed;left:0;right:0;top:0;bottom:0;z-index:-1;background:url(/img/bg.jpg) 50% center/cover no-repeat}body.lg .card{background:#fff}body.lg .reg h2{color:#231f20!important;text-shadow:none!important}body.lg h1,body.lg header,body.lg header *{color:#fff!important;text-shadow:0 1px 6px rgba(0,0,0,.85),0 0 2px rgba(0,0,0,.7)}body.lg .reg p{white-space:nowrap}@media(max-width:700px){body.lg .reg p{white-space:normal}}body.lg .card{max-width:700px;margin:36vh auto 0}@media(max-width:700px){body.lg .card{margin:46vh auto 0;max-width:none}}
+/* צבעי התפקידים */
+.role{display:inline-block;padding:1px 10px;border-radius:999px;font-size:12.5px;font-weight:700;line-height:1.6;background:var(--taken);color:var(--ink)}
+.role.r-s{background:#2563EB;color:#fff}
+.role.r-l{background:#16A34A;color:#fff}
+.role.r-t{background:#7C3AED;color:#fff}
+.role.r-i{background:#EA580C;color:#fff}
+.role.r-g{background:#FACC15;color:#231F20}
