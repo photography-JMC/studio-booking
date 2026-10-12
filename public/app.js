@@ -244,6 +244,7 @@
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
   /* שעה פנויה רק אם כל העמדות שנבחרו פנויות בה */
   function slotFree(d,h){return S.studios.every(function(id){return slotOK(id,d,h,1)})}
+  function coordNote(d,h){for(var i=0;i<S.studios.length;i++){var b=S.bookings[key(S.studios[i],d,h)];if(b&&b.name&&b.name.indexOf('תיאום עם')===0)return b.name}return ''}
   function takenAny(d,h){return S.studios.some(function(id){return isTaken(id,d,h)})}
   function dayState(d){
     if(blockedReason(d))return 'off';
@@ -383,7 +384,7 @@
       var ok=slotFree(S.date,h),tk=takenAny(S.date,h);
       var inSel=sel&&h>=S.start&&h<S.start+S.dur;
       if(ok) rows+='<button class="slot" data-act="slot" data-h="'+h+'" aria-pressed="'+inSel+'">'+hh(h)+'</button>';
-      else rows+='<button class="slot" disabled><span class="t">'+hh(h)+'</span>'+(tk?'<span>תפוס</span>':'')+'</button>';
+      else rows+='<button class="slot" disabled><span class="t">'+hh(h)+'</span>'+(tk?'<span'+(coordNote(S.date,h)?' style="font-size:.8em"':'')+'>'+(coordNote(S.date,h)||'תפוס')+'</span>':'')+'</button>';
     }
     html+='<div class="slots" id="slots">'+rows+'</div>';
     if(S.msg)html+='<p class="err" role="alert">'+esc(S.msg)+'</p>';
