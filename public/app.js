@@ -324,7 +324,7 @@
     var sel=selStudios(),one=sel.length===1?sel[0]:null;
     return '<div class="col"><p class="eyebrow">אולפני החוג</p>'+
       '<div class="studios" role="group" aria-label="בחירת עמדות">'+
-      STUDIOS.map(function(t){var on=S.studios.indexOf(t.id)>=0;return '<button class="studio" role="checkbox" data-act="studio" data-id="'+t.id+'" aria-checked="'+on+'"><span class="nm"><i class="bx" aria-hidden="true"></i>'+esc(t.name)+'</span><small>עד '+t.cap+'</small></button>'}).join('')+
+      STUDIOS.map(function(t){var on=S.studios.indexOf(t.id)>=0;return '<button class="studio" role="checkbox" data-act="studio" data-id="'+t.id+'" aria-checked="'+on+'"><span class="nm"><i class="bx" aria-hidden="true"></i>'+esc(t.name)+'</span></button>'}).join('')+
       '</div><p class="hint">אפשר לבחור כמה עמדות, גם מהמפה. הן יוזמנו יחד באותן שעות.</p>'+
       '<div class="detail"><h2>'+(one?esc(one.name):'נבחרו '+sel.length+' עמדות')+'</h2>'+
       (one&&one.desc?'<p>'+esc(one.desc)+'</p>':'')+
