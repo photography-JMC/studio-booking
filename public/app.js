@@ -238,7 +238,7 @@
         if((st==='removed'||st==='rejected')&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-del" data-u="'+u+'">מחיקה</button>';
         if(st!=='removed'&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-rm" data-u="'+u+'">הסרה</button>';
       }
-      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+esc(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
+      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span></h3><p>'+esc(m.email||'')+(m.role?' · '+roleChip(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
   }
 
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
@@ -274,6 +274,7 @@
     out.sort(function(a,b){var c=(a.date+pad(a.from)).localeCompare(b.date+pad(b.from));return past?-c:c});
     return out;
   }
+  function roleChip(r){var k={'סטודנט':'s','מרצה':'l','מתרגל':'t','מדריך':'i','אורח':'g'}[r];return r?'<span class="role'+(k?' r-'+k:'')+'">'+esc(r)+'</span>':''}
   function avatarHTML(p,big){
     var c='avatar'+(big==='xl'?' xl':big?' lg':'');
     if(p&&p.photo)return '<span class="'+c+'"><img src="'+esc(p.photo)+'" alt=""></span>';
@@ -732,7 +733,7 @@
       :'<p class="lbl" style="margin:0">עוד אין היסטוריה. כל ההזמנות שהסתיימו יופיעו כאן.</p>';
     var del=S.confirmDelete?'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" data-act="del-yes">כן, למחוק את הפרופיל</button><button class="btn ghost" data-act="del-no">ביטול</button></div>'
       :'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="reg-edit">עריכת פרטים</button><button class="btn ghost" data-act="del-ask">מחיקת פרופיל</button></div>';
-    $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head">'+avatarHTML(P,true)+'<div><h2>'+esc(P.name)+'</h2><span class="lbl">'+esc(P.year||'')+'</span></div></div>'+
+    $('#main').innerHTML='<div class="me">'+incomingHTML()+banner+'<aside class="card profile"><div class="head">'+avatarHTML(P,true)+'<div><h2>'+esc(P.name)+'</h2>'+roleChip(P.year||'')+'</div></div>'+
       '<dl class="kv"><dt>דוא״ל</dt><dd class="t">'+esc(P.email)+'</dd></dl>'+
       '<div class="stats"><div><b>'+up.length+'</b><span>הזמנות קרובות</span></div><div><b>'+mh+'</b><span>שעות החודש</span></div><div><b>'+th+'</b><span>סה״כ שעות</span></div></div>'+del+
       (S.confirmDelete?'<p class="lbl" style="margin:0">מחיקת הפרופיל מוחקת רק את הפרטים האישיים. הזמנות קיימות נשארות עד לביטול.</p>':'')+'</aside>'+
