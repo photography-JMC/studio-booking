@@ -1,5 +1,4 @@
 
-
 (async function(){
   document.documentElement.dir='rtl'; document.documentElement.lang='he';
   var CFG=null;
@@ -453,12 +452,12 @@
         '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="57"/><text x="'+p[0]+'" y="'+p[1]+'">'+p[2]+'</text></g>';
       if(!mini)g+=stationLabel(id,p);
     });
-    return '<svg class="pmap'+(mini?' mini':' big')+'" viewBox="0 '+(mini?'-24 1418 1251':'0 1418 1227')+'" role="group" aria-label="תרשים האולפנים השחורים והעמדות בהם" focusable="false">'+
+    return '<svg class="pmap'+(mini?' mini':' big')+'" viewBox="0 '+(mini?'-24 1560 1251':'0 1560 1227')+'" role="group" aria-label="תרשים האולפנים השחורים והעמדות בהם" focusable="false">'+
       '<path class="room" d="M20 100H1398V1190H757V968H20Z"/>'+
       '<path class="wall" d="M267 114V350M463 114V350M1016 839H1333"/>'+
       '<path class="wall k" d="M757 551V1190M957 551H1398M20 968H145M351 968H757M351 815V968"/>'+
       '<text class="ttl" x="465" y="62">אולפן שחור קדמי</text>'+
-      '<text class="ttl" x="1160" y="1150">אולפן שחור אחורי</text>'+
+      '<text class="ttl" x="1168" y="1150">אולפן שחור אחורי</text>'+
       '<text class="ent" x="248" y="1040">כניסה</text>'+g+'</svg>';
   }
   function miniPlan(){
