@@ -669,9 +669,13 @@
                :'<button class="btn ghost" data-act="noshow-mark" data-g="'+g.gid+'">סימון: לא הגיע</button>';
       return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+' · '+esc(g.name||'')+'</p></div><div class="acts">'+act+'</div></div>'}).join('')+'</div>';
     /* הזמנות קרובות */
-    var up=groups();
+    var all=groups(),up=all.filter(function(g){return g.uid!=='sys-classes'}),cls=all.filter(function(g){return g.uid==='sys-classes'});
     h+='<h3>הזמנות קרובות</h3>';
-    h+=up.length?'<div class="list">'+up.map(function(g){return itemHTML(g,true)}).join('')+'</div>':'<div class="card empty"><p style="margin:0">אין הזמנות קרובות באולפנים.</p></div>';
+    h+=up.length?'<div class="list">'+up.map(function(g){return itemHTML(g,true)}).join('')+'</div>':'<div class="card empty"><p style="margin:0">אין הזמנות קרובות של סטודנטים.</p></div>';
+    if(cls.length){
+      h+='<button type="button" class="btn ghost clsbtn" data-act="cls-toggle" aria-expanded="'+(!!S.clsOpen)+'">חסימות שיעורים ('+cls.length+') '+(S.clsOpen?'▲':'▼')+'</button>';
+      if(S.clsOpen)h+='<div class="list">'+cls.map(function(g){return itemHTML(g,true)}).join('')+'</div>';
+    }
     $('#main').innerHTML=h+'</div>';
   }
   async function markNoShow(gid,on){
@@ -847,7 +851,8 @@
   document.addEventListener('click',function(e){
     var b=e.target.closest('[data-act]'); if(!b)return;
     var a=b.dataset.act;
-    if(a==='tab'){S.tab=b.dataset.v;S.confirmCancel=null;if(S.tab==='book'&&S.step==='done'){S.step='slots'}render()}
+    if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
+    else if(a==='tab'){S.tab=b.dataset.v;S.confirmCancel=null;if(S.tab==='book'&&S.step==='done'){S.step='slots'}render()}
     else if(a==='home'){closePlan(true);S.tab='book';S.confirmCancel=null;S.editing=false;S.regErr='';if(S.step==='done')S.step='slots';render();window.scrollTo(0,0)}
     else if(a==='noshow-mark'){markNoShow(b.dataset.g,true)}
     else if(a==='noshow-undo'){markNoShow(b.dataset.g,false)}
