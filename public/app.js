@@ -441,7 +441,8 @@
         list=real.length?real:cls,first=list[0],nm;
     if(real.length)nm=first.name;
     else nm=first.name.indexOf('תיאום עם')===0?'תיאום עם ירדן':'שיעור';
-    if(nm.length>13)nm=nm.slice(0,12)+'…';
+    var lim=(window.matchMedia&&window.matchMedia('(max-width:900px)').matches)?9:13;
+    if(nm.length>lim)nm=nm.slice(0,lim-1)+'…';
     var extra=list.length>1?' +'+(list.length-1):'';
     var tm=list.length>1?'':'\u2066'+hh(first.from)+'–'+hh(first.to)+'\u2069';
     if(!real.length){extra='';tm=''}
