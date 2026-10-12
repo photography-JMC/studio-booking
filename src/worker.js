@@ -8,6 +8,7 @@ const CSP = [
   "script-src 'self' https://accounts.google.com/gsi/client",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
   "font-src https://fonts.gstatic.com",
+  "manifest-src 'self'", "worker-src 'self'",
   "img-src 'self' data: https://*.googleusercontent.com",
   "connect-src 'self' https://accounts.google.com/gsi/",
   "frame-src https://accounts.google.com/gsi/",
@@ -17,6 +18,7 @@ const CSP = [
 function secure(res, api) {
   const r = new Response(res.body, res);
   r.headers.set('Content-Security-Policy', CSP);
+  r.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   r.headers.set('X-Content-Type-Options', 'nosniff');
   r.headers.set('X-Frame-Options', 'DENY');
   r.headers.set('Referrer-Policy', 'no-referrer');
