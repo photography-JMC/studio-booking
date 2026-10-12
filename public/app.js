@@ -477,7 +477,7 @@
     var names=namesOf(S.studios);
     return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-h">'+
       '<div class="modal-head"><h2 id="pm-h">מפת האולפנים</h2><button class="btn ghost" id="pm-x" data-act="plan-close">סיום</button></div>'+
-      (S.date?'<p class="plan-note">שמות המזמינים מוצגים לתאריך: <b>'+esc(fmtLong(parse(S.date)))+'</b></p>':'')+
+      (S.date?'<p class="plan-note">מצב ההזמנות לתאריך: <b>'+esc(fmtLong(parse(S.date)))+'</b>'+(S.date!==ds(TODAY)?' (היום הראשון שאפשר להזמין בו)':'')+'</p>':'')+
       '<p class="scrollhint">אפשר לגלול הצידה כדי לראות את כל המפה</p>'+'<div class="planrow"><div class="roleidx" aria-label="אינדקס סוגי מזמינים"><b>סוג המזמין</b>'+Object.keys(ROLE_KEYS).map(function(r){return '<span><i class="rc-bg-'+ROLE_KEYS[r]+'"></i>'+r+'</span>'}).join('')+'</div><div class="plancol">'+planSvg(false)+'</div></div>'+
       '<p class="plan-note">לחצו על עמדות כדי לבחור כמה במקביל (עד '+MAX_STATIONS+'). נבחרו: <b>'+esc(Array.isArray(names)?names.join(' · '):names)+'</b></p>'+
       '<div class="legend"><span><i style="background:var(--ink)"></i>עמדה</span><span><i style="background:var(--accent);outline:2px solid var(--ink)"></i>עמדה שנבחרה</span><span><i style="background:var(--muted);opacity:.6"></i>אין שעות פנויות בתאריך</span></div></div>';
@@ -801,6 +801,10 @@
     renderTabs(); renderNotice();
     if(needReg()){renderReg();return}
     if(S.tab==='book')renderBook(); else renderList();
+    if(!S.planAuto&&S.tab==='book'&&S.db&&S.memberLoaded&&canBook()){
+      S.planAuto=true;
+      setTimeout(function(){var m=$('#modal');if(m&&m.hidden)openPlan(null)},60);
+    }
   }
 
   /* ----- Profile storage ----- */
