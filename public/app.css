@@ -220,3 +220,17 @@ textarea{resize:vertical;min-height:64px}
 .role.r-t{background:#7C3AED;color:#fff}
 .role.r-i{background:#EA580C;color:#fff}
 .role.r-g{background:#FACC15;color:#231F20}
+
+/* צבעי סוגי מזמינים במפה */
+:root{--rc-s:#2563EB;--rc-l:#16A34A;--rc-t:#7C3AED;--rc-i:#EA580C;--rc-g:#CA8A04}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--rc-s:#60A5FA;--rc-l:#4ADE80;--rc-t:#A78BFA;--rc-i:#FB923C;--rc-g:#FACC15}}
+:root[data-theme="dark"]{--rc-s:#60A5FA;--rc-l:#4ADE80;--rc-t:#A78BFA;--rc-i:#FB923C;--rc-g:#FACC15}
+.pmap .lab .nm.rc-s{fill:var(--rc-s)}.pmap .lab .nm.rc-l{fill:var(--rc-l)}.pmap .lab .nm.rc-t{fill:var(--rc-t)}.pmap .lab .nm.rc-i{fill:var(--rc-i)}.pmap .lab .nm.rc-g{fill:var(--rc-g)}
+.planrow{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.plancol{flex:1 1 420px;min-width:0}
+.roleidx{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--ink)}
+.roleidx b{font-size:13px;color:var(--muted);font-weight:600}
+.roleidx i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-inline-end:8px;vertical-align:-1px}
+.rc-bg-s{background:var(--rc-s)}.rc-bg-l{background:var(--rc-l)}.rc-bg-t{background:var(--rc-t)}.rc-bg-i{background:var(--rc-i)}.rc-bg-g{background:var(--rc-g)}
+.modal-card{max-width:1000px}
+.plancol{overflow-x:auto}
