@@ -454,11 +454,11 @@
       var p=PLAN_STATIONS[id],st=studioOf(id);
       if(!st)return;
       var on=S.studios.indexOf(id)>=0,full=studioFull(id);
-      g+='<g class="st'+(on?' on':'')+(full?' full':'')+'" role="button" tabindex="0" data-act="studio" data-id="'+id+'" aria-pressed="'+on+'" aria-label="'+esc(st.name)+(full?', אין שעות פנויות בתאריך שנבחר':'')+'">'+
+      g+='<g class="st'+(on?' on':'')+(full?' full':'')+'" role="button" tabindex="0" data-act="'+(mini?'plan-open':'studio')+'" data-id="'+id+'" aria-pressed="'+on+'" aria-label="'+esc(st.name)+(full?', אין שעות פנויות בתאריך שנבחר':'')+'">'+
         '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="57"/><text x="'+p[0]+'" y="'+p[1]+'">'+p[2]+'</text></g>';
       if(!mini)g+=stationLabel(id,p);
     });
-    return '<svg class="pmap'+(mini?' mini':' big')+'" viewBox="0 '+(mini?'0 1418 1227':'0 1418 1227')+'" role="group" aria-label="תרשים האולפנים השחורים והעמדות בהם" focusable="false">'+
+    return '<svg class="pmap'+(mini?' mini':' big')+'"'+(mini?' data-act="plan-open" style="cursor:pointer"':'')+' viewBox="0 '+(mini?'0 1418 1227':'0 1418 1227')+'" role="group" aria-label="תרשים האולפנים השחורים והעמדות בהם" focusable="false">'+
       '<path class="room" d="M20 100H1398V1190H757V968H20Z"/>'+
       '<path class="wall" d="M267 114V350M463 114V350M1016 839H1333"/>'+
       '<path class="wall k" d="M757 551V1190M957 551H1398M20 968H145M351 968H757M351 815V968"/>'+
