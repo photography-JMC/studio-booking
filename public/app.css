@@ -77,7 +77,8 @@ h1{margin:0;font-family:var(--f-display);font-weight:600;font-size:26px;line-hei
 .pmap .room{fill:var(--bg);stroke:var(--line);stroke-width:4}
 .pmap .wall{stroke:var(--ink);stroke-width:5;fill:none}
 .pmap .wall.k{stroke-width:24}
-.pmap .ttl{fill:var(--ink);font:600 46px var(--f-display);text-anchor:middle}
+.pmap .ttl{fill:var(--ink);font:600 36px var(--f-display);text-anchor:middle}
+.pmap .ttl.back{font-size:30px}
 .pmap .ent{fill:var(--ink);font:700 30px var(--f-body);text-anchor:middle}
 .pmap .st{cursor:pointer;outline:none}
 .pmap .st circle{fill:var(--ink);stroke:transparent;stroke-width:8}
@@ -95,8 +96,8 @@ h1{margin:0;font-family:var(--f-display);font-weight:600;font-size:26px;line-hei
 .bx{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-radius:4px;margin-inline-end:8px;vertical-align:-2px;flex:none}
 [aria-checked="true"] .bx{background:var(--accent);border-color:var(--ink)}
 .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
-.pmap.mini .ttl{font-size:74px}
-.pmap.mini .ttl.back{font-size:50px}
+.pmap.mini .ttl{font-size:56px}
+.pmap.mini .ttl.back{font-size:52px}
 .pmap.mini .ent{font-size:42px}
 .pmap.mini .st text{font-size:64px}
 .miniplan{max-width:340px;margin:18px auto 0;padding-top:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
