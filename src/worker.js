@@ -18,7 +18,6 @@ const CSP = [
 function secure(res, api) {
   const r = new Response(res.body, res);
   r.headers.set('Content-Security-Policy', CSP);
-  r.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   r.headers.set('X-Content-Type-Options', 'nosniff');
   r.headers.set('X-Frame-Options', 'DENY');
   r.headers.set('Referrer-Policy', 'no-referrer');
