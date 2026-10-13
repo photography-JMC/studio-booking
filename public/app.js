@@ -58,6 +58,7 @@
     S.ver=st.v;S.uid=st.me.uid;S.canEdit=!!st.me.isAdmin;S.authEmail=st.me.email;
     if(!S.reg.email)S.reg.email=S.authEmail;
     if(st.me.suggest&&!S.reg.name)S.reg.name=st.me.suggest;
+    S.listRole=st.me.listRole||'';if(S.listRole)S.reg.year=S.listRole;
     S.bookings=st.bookings||{};S.mine=st.mine||{};S.noshows=st.noshows||{};S.releases=st.releases||{};S.transfers=st.transfers||{};S.members=st.members||{};
     S.member=st.member;S.memberLoaded=true;
     var pChanged=JSON.stringify(st.profile)!==JSON.stringify(S.profile)||!S.profileLoaded;
@@ -559,6 +560,9 @@
   function allowHTML(){
     var h='<h3>רשימת אישור אוטומטי</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">';
     h+='<p style="margin:0">מי שהמייל שלו ברשימה מאושר מיד כשהוא נרשם. מי שלא ברשימה ממתין לאישור ידני. '+(S.alCount==null?'':'כרגע ברשימה: <b>'+S.alCount+'</b> כתובות.')+'</p>';
+    var by=S.alBy||{},bl=Object.keys(by).map(function(r){return roleChip(r)+' '+by[r]}).join(' · ');
+    if(bl)h+='<p style="margin:0">'+bl+'</p>';
+    h+='<div class="field"><label class="lbl" for="al-role">תפקיד לכתובות שמודבקות עכשיו (קובע גם את הצבע שלהם במפה)</label><select id="al-role" data-t="alRole">'+YEARS.map(function(y){return '<option'+((S.alRole||'סטודנט')===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>';
     h+='<div class="field"><label class="lbl" for="al-text">הדביקו כתובות מייל (אחת בכל שורה, או מופרדות ברווח או בפסיק)</label><textarea id="al-text" data-t="alText" dir="ltr" rows="5" placeholder="name@edu.jmc.ac.il">'+esc(S.alText||'')+'</textarea></div>';
     if(S.alMsg)h+='<p style="margin:0" role="status"><b>'+esc(S.alMsg)+'</b></p>';
     h+='<div class="acts"><button class="btn" data-act="al-add"'+(S.alWork?' disabled':'')+'>הוספה לרשימה</button>';
@@ -570,16 +574,16 @@
   async function alAdd(){
     S.alWork=true;S.alMsg='';renderAdmin();
     try{
-      var r=await api('POST','/api/admin/allowlist',{text:S.alText||''});
-      S.alCount=r.count;S.alText='';
-      S.alMsg='נוספו '+r.added+' כתובות'+(r.approvedNow?', ואושרו '+r.approvedNow+' נרשמים שהמתינו':'')+(r.invalid.length?'. לא תקינות והתעלמנו: '+r.invalid.join(', '):'')+'.';
+      var r=await api('POST','/api/admin/allowlist',{text:S.alText||'',role:S.alRole||'סטודנט'});
+      S.alCount=r.count;S.alText='';S.alBy=null;S.alCount=null;
+      S.alMsg='נוספו '+r.added+' כתובות בתפקיד '+(S.alRole||'סטודנט')+(r.approvedNow?', ואושרו '+r.approvedNow+' נרשמים שהמתינו':'')+(r.invalid.length?'. לא תקינות והתעלמנו: '+r.invalid.join(', '):'')+'.';
       await forceRefresh();
     }catch(e){S.alMsg=e.message||'שגיאה'}
     S.alWork=false;if(S.tab==='all')renderAdmin();
   }
   async function alClear(){
     S.alClear=false;
-    try{var r=await api('POST','/api/admin/allowlist/clear',{});S.alCount=r.count;S.alMsg='הרשימה נוקתה.'}catch(e){S.alMsg=e.message||'שגיאה'}
+    try{var r=await api('POST','/api/admin/allowlist/clear',{});S.alCount=0;S.alBy={};S.alMsg='הרשימה נוקתה.'}catch(e){S.alMsg=e.message||'שגיאה'}
     renderAdmin();
   }
   function toolsHTML(){
@@ -679,7 +683,7 @@
     render();
   }
   function renderAdmin(){
-    if(S.alCount==null&&!S.alBusy){S.alBusy=true;api('GET','/api/admin/allowlist').then(function(r){S.alCount=r.count;S.alBusy=false;if(S.tab==='all')renderAdmin()},function(){S.alBusy=false;S.alCount=0})}
+    if(S.alCount==null&&!S.alBusy){S.alBusy=true;api('GET','/api/admin/allowlist').then(function(r){S.alCount=r.count;S.alBy=r.byRole||{};S.alBusy=false;if(S.tab==='all')renderAdmin()},function(){S.alBusy=false;S.alCount=0})}
     var h='<div class="admin">'+membersHTML()+allowHTML()+toolsHTML();
     /* סטודנטים עם אי-הגעות */
     var by={},g;
@@ -741,9 +745,9 @@
       '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת \u2066@'+EMAIL_DOMAIN+'.\u2069'+' הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
       '<div class="photo-row">'+avatarHTML({photo:r.photo,name:r.name},'xl')+'<div class="photo-btns"><button type="button" class="btn ghost" data-act="photo-pick">'+(r.photo?'החלפת תמונה':'העלאת תמונת פרופיל')+'</button>'+(r.photo?'<button type="button" class="btn ghost" data-act="photo-remove">הסרה</button>':'')+'<input type="file" id="r-photo" accept="image/*" data-photo="1" hidden><span class="lbl" style="flex-basis:100%">אפשר גם בלי תמונה. התמונה מוצגת רק לך.</span></div></div>'+
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"'+(S.listRole?' disabled':'')+'><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="r-email">מייל ארגוני</label><input id="r-email" type="email" autocomplete="email" dir="ltr" data-r="email" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.authEmail||r.email)+'"'+(S.authEmail?' readonly':'')+' style="text-align:right"></div></div>'+
-      (edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+
+      (S.listRole?'<p class="tfnote" style="margin:0">התפקיד נקבע עבורך מראש על ידי מנהל המערכת.</p>':'')+(edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+
       (S.regErr?'<p class="err" role="alert">'+esc(S.regErr)+'</p>':'')+
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="reg-save"'+(S.regBusy?' disabled':'')+'>'+(S.regBusy?'שומר…':(edit?'שמירה':'סיום הרשמה'))+'</button>'+
       (edit?'<button class="btn ghost" data-act="reg-cancel">ביטול</button>':'')+'</div></div>';
