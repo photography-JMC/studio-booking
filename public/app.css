@@ -258,3 +258,4 @@ body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10p
 .stt .stsub{color:var(--muted);font-size:13px}
 .stt td.al-no{color:var(--al-no);font-weight:700}
 @media(max-width:700px){.stt{font-size:14px}.stt th,.stt td{padding:6px 7px}}
+#who a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}

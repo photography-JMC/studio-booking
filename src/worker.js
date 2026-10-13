@@ -41,6 +41,7 @@ export default {
       }
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') return secure(new Response('Method Not Allowed', { status: 405 }), false);
+    if (url.pathname.startsWith('/_g/')) return secure(new Response('Not Found', { status: 404 }), false);
     return secure(await env.ASSETS.fetch(request), false);
   },
   async scheduled(event, env, ctx) { ctx.waitUntil(housekeeping(env)); },
@@ -156,6 +157,7 @@ async function handleApi(request, env, url, ctx) {
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await dropTransfer(c, m[1]);
   else if (method === 'PUT' && path === '/api/profile') res = await saveProfile(c);
   else if (method === 'GET' && path === '/api/people') res = await peopleDir(c);
+  else if (method === 'GET' && path === '/api/guide') res = await guideFile(c);
   else if (method === 'DELETE' && path === '/api/profile') res = await deleteProfile(c);
   else if ((m = path.match(/^\/api\/admin\/members\/([a-f0-9]{8,32})\/(status|remove)$/)) && method === 'POST') res = await memberAction(c, m[1], m[2]);
   else if ((m = path.match(/^\/api\/admin\/members\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await purgeMember(c, m[1]);
@@ -262,6 +264,18 @@ async function getState(c) {
 
 /* ---------- הזמנות ---------- */
 // רשימת שמות להוספה כמשתתפים בהזמנה: רק שם ותפקיד, בלי מיילים
+/* מדריך השימוש (PDF): זמין רק למי שנכנס למערכת */
+async function guideFile(c) {
+  const { env, url } = c;
+  await needUser(c);
+  const r = await env.ASSETS.fetch(new Request(new URL('/_g/guide.pdf', url.origin)));
+  if (!r.ok) fail(404, 'not_found', 'המדריך לא נמצא.');
+  const dl = url.searchParams.get('dl') === '1';
+  return new Response(r.body, { status: 200, headers: {
+    'content-type': 'application/pdf',
+    'content-disposition': (dl ? 'attachment' : 'inline') + "; filename=\"studio-guide.pdf\"; filename*=UTF-8''" + encodeURIComponent('מדריך-הזמנת-אולפנים.pdf'),
+  } });
+}
 async function peopleDir(c) {
   const { env } = c;
   const u = await needUser(c);
