@@ -47,9 +47,18 @@ export default {
 };
 
 /* ניקוי יומי: התחברויות שפגו, מונה קצב, חשבונות שלא השלימו הרשמה, יומן ישן */
+// טבלת המשתתפים בהזמנה נוצרת בעת הצורך (פעם אחת לכל מופע של השרת)
+let PEOPLE_READY = false;
+async function ensurePeople(env) {
+  if (PEOPLE_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS booking_people (gid TEXT NOT NULL, uid TEXT NOT NULL, PRIMARY KEY (gid, uid))').run();
+  PEOPLE_READY = true;
+}
 async function housekeeping(env) {
   const now = Date.now();
+  await ensurePeople(env);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM booking_people WHERE gid NOT IN (SELECT gid FROM bookings)'),
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now),
     env.DB.prepare('DELETE FROM rl'),
     env.DB.prepare('DELETE FROM users WHERE profile_done = 0 AND created_at < ? AND id NOT IN (SELECT user_id FROM sessions)').bind(now - 30 * 86400e3),
@@ -139,6 +148,7 @@ async function handleApi(request, env, url, ctx) {
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})\/(accept|decline)$/)) && method === 'POST') res = await answerTransfer(c, m[1], m[2]);
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await dropTransfer(c, m[1]);
   else if (method === 'PUT' && path === '/api/profile') res = await saveProfile(c);
+  else if (method === 'GET' && path === '/api/people') res = await peopleDir(c);
   else if (method === 'DELETE' && path === '/api/profile') res = await deleteProfile(c);
   else if ((m = path.match(/^\/api\/admin\/members\/([a-f0-9]{8,32})\/(status|remove)$/)) && method === 'POST') res = await memberAction(c, m[1], m[2]);
   else if ((m = path.match(/^\/api\/admin\/members\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await purgeMember(c, m[1]);
@@ -207,6 +217,7 @@ async function getState(c) {
   const u = await needUser(c);
   const admin = isAdmin(u);
   const listed = admin ? null : await allowEntry(env, u.email);
+  await ensurePeople(env);
   const ver = (await env.DB.prepare("SELECT v FROM meta WHERE k = 'ver'").first()).v;
   const since = url.searchParams.get('v');
   if (since !== null && Number(since) === ver) return json({ unchanged: true, v: ver });
@@ -220,7 +231,10 @@ async function getState(c) {
     admin ? q('SELECT * FROM releases') : q('SELECT * FROM releases WHERE user_id = ?', u.id),
     q('SELECT * FROM transfers WHERE from_uid = ? OR to_email = ?', u.id, u.email),
     admin ? q('SELECT id,name,email,role,status,created_at FROM users WHERE profile_done = 1') : q('SELECT 1 WHERE 0'),
+    admin ? q('SELECT bp.gid AS gid, u.name AS name FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid IN (SELECT gid FROM bookings WHERE date >= ?) ORDER BY u.name', from)
+          : q('SELECT bp.gid AS gid, u.name AS name FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid IN (SELECT gid FROM bookings WHERE user_id = ?) ORDER BY u.name', u.id),
   ]);
+  const people = {}; for (const r of out[6].results) (people[r.gid] = people[r.gid] || []).push(r.name);
   const bk = (r) => {
     const o = { studio: r.studio, date: r.date, hour: r.hour, gid: r.gid, uid: r.user_id, name: r.name, year: r.role, purpose: r.purpose, people: r.people, createdAt: r.created_at };
     if (r.transferred_from) o.transferredFrom = r.transferred_from;
@@ -235,10 +249,19 @@ async function getState(c) {
   const members = {}; for (const r of out[5].results) members[r.id] = { uid: r.id, name: r.name, email: r.email, role: r.role, status: r.status, createdAt: r.created_at };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
-  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '' }, profile, member, bookings, mine, noshows, releases, transfers, members });
+  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '' }, profile, member, bookings, mine, noshows, releases, transfers, members, people });
 }
 
 /* ---------- הזמנות ---------- */
+// רשימת שמות להוספה כמשתתפים בהזמנה: רק שם ותפקיד, בלי מיילים
+async function peopleDir(c) {
+  const { env } = c;
+  const u = await needUser(c);
+  if (!canBook(u)) fail(403, 'not_approved', 'ההרשמה שלך עדיין לא אושרה.');
+  await rateLimit(env, 'dir:' + u.id, 30, 60);
+  const r = await env.DB.prepare("SELECT id, name, role FROM users WHERE profile_done = 1 AND status = 'approved' AND id <> ? AND id NOT LIKE 'sys-%' ORDER BY name LIMIT 2000").bind(u.id).all();
+  return json({ items: r.results.map((x) => ({ uid: x.id, name: x.name, role: x.role })) });
+}
 async function createBooking(c) {
   const { env, request } = c;
   const u = await needUser(c);
@@ -260,6 +283,18 @@ async function createBooking(c) {
   const people = b.people;
   if (!Number.isInteger(people) || people < 1 || people > cap) fail(400, 'people', `מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-${cap}.`);
   const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
+  let part = [];
+  if (b.participants !== undefined && b.participants !== null) {
+    if (!Array.isArray(b.participants) || b.participants.length > 20) fail(400, 'participants', 'רשימת המשתתפים לא תקינה.');
+    part = [...new Set(b.participants.map(String))].filter((x) => x !== u.id);
+    if (part.length + 1 > people) fail(400, 'people', 'מספר המשתתפים קטן ממספר השמות שנבחרו. עדכנו את מספר המשתתפים.');
+    if (part.length) {
+      const ph = part.map(() => '?').join(',');
+      const ok = (await env.DB.prepare(`SELECT id FROM users WHERE id IN (${ph}) AND profile_done = 1 AND status = 'approved'`).bind(...part).all()).results;
+      if (ok.length !== part.length) fail(400, 'participants', 'אחד מהמשתתפים שנבחרו לא נמצא. רעננו את הדף ובחרו שוב.');
+    }
+    await ensurePeople(env);
+  }
   const own = (await env.DB.prepare('SELECT hour FROM bookings WHERE user_id = ? AND date = ?').bind(u.id, b.date).all()).results;
   const hrs = new Set(own.map((r) => r.hour)); for (let i = 0; i < dur; i++) hrs.add(start + i);
   if (hrs.size > RULES.MAX_DAY) fail(400, 'quota', `ההזמנה חורגת ממכסה של ${RULES.MAX_DAY} שעות ליום.`);
@@ -267,6 +302,7 @@ async function createBooking(c) {
   for (let i = 0; i < dur; i++) for (const s of ids)
     stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
       .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, b.purpose, people, notes, now));
+  for (const pu of part) stmts.push(env.DB.prepare('INSERT OR IGNORE INTO booking_people (gid, uid) VALUES (?,?)').bind(gid, pu));
   stmts.push(bump(env));
   try { await env.DB.batch(stmts); } // כל ההזמנה נשמרת יחד או לא נשמרת בכלל
   catch (e) {
@@ -275,7 +311,7 @@ async function createBooking(c) {
   }
   const after = await env.DB.prepare('SELECT COUNT(DISTINCT hour) AS n FROM bookings WHERE user_id = ? AND date = ?').bind(u.id, b.date).first();
   if (after.n > RULES.MAX_DAY) { // הגנה מפני שתי בקשות במקביל של אותו משתמש
-    await env.DB.batch([env.DB.prepare('DELETE FROM bookings WHERE gid = ?').bind(gid), bump(env)]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM bookings WHERE gid = ?').bind(gid), ...(part.length ? [env.DB.prepare('DELETE FROM booking_people WHERE gid = ?').bind(gid)] : []), bump(env)]);
     fail(409, 'quota', `ההזמנה חורגת ממכסה של ${RULES.MAX_DAY} שעות ליום.`);
   }
   if (!isAdmin(u)) {
@@ -297,7 +333,8 @@ async function cancelBooking(c, gid) {
   if (g.user_id !== u.id && !admin) fail(403, 'forbidden', 'אפשר לבטל רק הזמנה שלך.');
   if (absMin(g.date, g.hi + 1) <= nowAbs()) fail(400, 'over', 'ההזמנה כבר הסתיימה.');
   if (!admin && absMin(g.date, g.lo) - nowAbs() < RULES.CANCEL_LEAD_H * 60) fail(400, 'too_late', 'אי אפשר לבטל פחות משעתיים לפני תחילת ההזמנה.');
-  const st = [env.DB.prepare('DELETE FROM bookings WHERE gid = ?').bind(gid), env.DB.prepare('DELETE FROM transfers WHERE gid = ?').bind(gid), bump(env)];
+  await ensurePeople(env);
+  const st = [env.DB.prepare('DELETE FROM bookings WHERE gid = ?').bind(gid), env.DB.prepare('DELETE FROM transfers WHERE gid = ?').bind(gid), env.DB.prepare('DELETE FROM booking_people WHERE gid = ?').bind(gid), bump(env)];
   if (g.user_id !== u.id) st.push(audit(env, u, 'cancel_booking', rows[0].email, `${g.date} ${g.lo}-${g.hi + 1}`));
   await env.DB.batch(st);
   return json({ ok: true });

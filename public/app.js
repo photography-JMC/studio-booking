@@ -59,7 +59,7 @@
     if(!S.reg.email)S.reg.email=S.authEmail;
     if(st.me.suggest&&!S.reg.name)S.reg.name=st.me.suggest;
     S.listRole=st.me.listRole||'';if(S.listRole)S.reg.year=S.listRole;
-    S.bookings=st.bookings||{};S.mine=st.mine||{};S.noshows=st.noshows||{};S.releases=st.releases||{};S.transfers=st.transfers||{};S.members=st.members||{};
+    S.bookings=st.bookings||{};S.mine=st.mine||{};S.noshows=st.noshows||{};S.releases=st.releases||{};S.transfers=st.transfers||{};S.members=st.members||{};S.people=st.people||{};
     S.member=st.member;S.memberLoaded=true;
     var pChanged=JSON.stringify(st.profile)!==JSON.stringify(S.profile)||!S.profileLoaded;
     S.profileLoaded=true;
@@ -116,7 +116,7 @@
     ver:0,polls:0,loaded:false,flash:'',bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,confirmRemove:null,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
     reg:{name:'',year:'',email:'',agree:false},
-    form:{purpose:'',people:1,notes:''}
+    form:{purpose:'',people:1,notes:'',part:[]}
   };
   function needReg(){return S.ready&&S.db&&S.uid&&S.profileLoaded&&(!S.profile||S.editing)}
 
@@ -401,6 +401,18 @@
     }
     return html;
   }
+  function partHTML(cap){
+    var f=S.form,part=f.part||[];
+    if(!S.dir&&!S.dirBusy){S.dirBusy=true;api('GET','/api/people').then(function(r){S.dir=r.items||[];S.dirAt=Date.now();S.dirBusy=false;if(S.step==='form')renderSide()},function(){S.dir=[];S.dirBusy=false})}
+    var chosen={};part.forEach(function(x){chosen[x.uid]=1});
+    var opts=(S.dir||[]).filter(function(x){return !chosen[x.uid]});
+    var h='<div class="field"><label class="lbl" for="f-part">משתתפים איתי בעמדה (לא חובה)</label>';
+    if(!S.dir)h+='<p class="tfnote" style="margin:0">טוען רשימת שמות…</p>';
+    else if(part.length+1>=cap)h+='<p class="tfnote" style="margin:0">הגעתם למספר המשתתפים המרבי בהזמנה.</p>';
+    else h+='<select id="f-part"><option value="">הוספת שם מהרשימה…</option>'+opts.map(function(x){return '<option value="'+esc(x.uid)+'">'+esc(x.name)+(x.role&&x.role!=='סטודנט'?' ('+esc(x.role)+')':'')+'</option>'}).join('')+'</select>';
+    if(part.length)h+='<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+part.map(function(x){return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 10px;background:var(--surface)">'+esc(x.name)+'<button type="button" class="btn ghost" data-act="part-rm" data-u="'+esc(x.uid)+'" aria-label="הסרת '+esc(x.name)+'" style="padding:0 8px;min-height:24px;line-height:1">×</button></span>'}).join('')+'</div>';
+    return h+'</div>';
+  }
   function sideForm(){
     var sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0),f=S.form;
     return '<h3>פרטי ההזמנה</h3>'+
@@ -408,6 +420,7 @@
       (S.profile?'<div class="sum"><span class="lbl">מזמין/ה</span><b>'+esc(S.profile.name)+'</b></div>':'')+
       '<div class="field"><label class="lbl" for="f-purpose">מטרת השימוש</label><select id="f-purpose" data-f="purpose"><option value="">בחירה</option>'+PURPOSES.map(function(y){return '<option'+(f.purpose===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="f-people">מספר משתתפים (עד '+cap+')</label><input id="f-people" type="number" min="1" max="'+cap+'" value="'+esc(f.people)+'" data-f="people"></div>'+
+      partHTML(cap)+
       '<div class="field"><label class="lbl" for="f-notes">ציוד או הערות לצוות</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       '<p class="pledge">סטודנטים יקרים, הזמנתכם מחייבת, באם אינכם יכולים להגיע, נא לבטל את הזמנת האולפן במועד המוקדם ביותר האפשרי, במידה ואי הגעה למרות ההזמנה תחזור על עצמה, המערכת לא תאפשר לכם להזמין שוב.</p>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
@@ -545,7 +558,7 @@
       }
     }
     if(!act&&mine) act='<span class="lbl">אי אפשר לבטל פחות מ-'+(CANCEL_LEAD_H===2?'שעתיים':CANCEL_LEAD_H+' שעות')+' לפני</span>';
-    return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+''+tfx+'</div><div class="acts">'+act+'</div></div>';
+    return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(S.people&&S.people[g.gid]?'<p>משתתפים: '+esc(S.people[g.gid].join(', '))+'</p>':'')+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+''+tfx+'</div><div class="acts">'+act+'</div></div>';
   }
 
   async function purgeMember(uid){
@@ -900,10 +913,12 @@
     if(blockedReason(S.date)){S.err='אי אפשר להזמין בתאריך הזה ('+blockedReason(S.date)+').';return renderSide()}
     if(!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
     if(!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
+    var part=(f.part||[]);
+    if(part.length+1>people){S.err='מספר המשתתפים קטן ממספר השמות שנבחרו. עדכנו את מספר המשתתפים.';return renderSide()}
     if(myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300)});
+      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid})});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
       renderSide();
@@ -911,6 +926,7 @@
       forceRefresh();
       return;
     }
+    S.form.part=[];
     S.busy=false;S.done={studios:S.studios.slice(),date:S.date,from:S.start,to:S.start+S.dur};
     S.step='done';S.start=null;
     renderSide();
@@ -928,6 +944,7 @@
     var b=e.target.closest('[data-act]'); if(!b)return;
     var a=b.dataset.act;
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
+    else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});renderSide()}
     else if(a==='al-add'){alAdd()}
     else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
     else if(a==='al-nm-edit'){S.alEdit=b.dataset.em;S.alEditVal=b.dataset.nm||'';S.alDel=null;var le=$('#al-list');if(le)le.innerHTML=alListHTML();var ni=$('#al-nm');if(ni)ni.focus()}
@@ -995,7 +1012,7 @@
       renderSide();
       var sl=document.querySelector('.slot[data-h="'+h+'"]');if(sl)sl.focus({preventScroll:true});
     }
-    else if(a==='next'){S.step='form';S.err='';renderSide();toSide()}
+    else if(a==='next'){S.step='form';S.err='';if(!S.dirAt||Date.now()-S.dirAt>120000)S.dir=null;renderSide();toSide()}
     else if(a==='back'){S.step='slots';renderSide()}
     else if(a==='submit'){submit()}
     else if(a==='more'){S.step='slots';S.done=null;S.start=null;S.anchor=null;S.msg='';partial()}
@@ -1011,6 +1028,7 @@
   });
   function onField(e){
     var t=e.target,d=t.dataset||{};
+    if(t.id==='f-part'){if(e.type==='change'&&t.value){var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
     if(t.classList&&t.classList.contains('al-rolesel')){if(e.type==='change')alSetRole(d.em,t.value);return}
