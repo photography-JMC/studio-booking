@@ -712,6 +712,8 @@ async function statsData(c) {
     return people.get(uid);
   };
   const totals = { bookings: 0, hours: 0, people: new Set() };
+  const yrs = new Map(); // לפי שנת לימוד: הזמנות לפי השנה שצוינה בהזמנה, השתתפות לפי השנה האחרונה של המשתתף
+  const yAgg = (y) => { if (!yrs.has(y)) yrs.set(y, { year: y, who: new Set(), bookings: 0, hours: 0, pBookings: 0, pHours: 0, noshows: 0 }); return yrs.get(y); };
   for (const g of out[0].results) {
     if (purpose && g.purpose !== purpose) continue;
     const hours = Math.max(1, g.hi - g.lo), ps = (parts[g.gid] || []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name), 'he'));
@@ -726,6 +728,8 @@ async function statsData(c) {
       if (!match(x)) continue;
       const pr = person(x.uid, x.name, x.email, x.role);
       if (x.owner) { pr.bookings++; pr.hours += hours; if (noshow.has(g.gid)) pr.noshows++; } else { pr.pBookings++; pr.pHours += hours; }
+      const ya = yAgg(x.owner ? (g.sy || x.year || '') : (x.year || '')); ya.who.add(x.uid);
+      if (x.owner) { ya.bookings++; ya.hours += hours; if (noshow.has(g.gid)) ya.noshows++; } else { ya.pBookings++; ya.pHours += hours; }
       pr.by.set(g.purpose, (pr.by.get(g.purpose) || 0) + 1);
     }
     if (detail && detailRows.length < 20000) detailRows.push({
@@ -738,7 +742,9 @@ async function statsData(c) {
     total: p.hours + p.pHours, noshows: p.noshows, by: [...p.by.entries()].sort((a, b) => b[1] - a[1]),
   })).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name), 'he'));
   const purposesOut = [...purposes.values()].map((x) => ({ purpose: x.purpose, bookings: x.bookings, hours: x.hours, personHours: x.personHours, people: x.who.size })).sort((a, b) => b.hours - a.hours);
-  const res = { people: peopleOut, purposes: purposesOut, totals: { bookings: totals.bookings, hours: totals.hours, people: totals.people.size }, from: from === '0000-00-00' ? '' : from, to };
+  const order = [...STUDY_YEARS, ''];
+  const yearsOut = [...yrs.values()].map((y) => ({ year: y.year, ord: order.indexOf(y.year) < 0 ? 99 : order.indexOf(y.year), people: y.who.size, bookings: y.bookings, hours: y.hours, pBookings: y.pBookings, pHours: y.pHours, total: y.hours + y.pHours, noshows: y.noshows })).sort((a, b) => a.ord - b.ord);
+  const res = { people: peopleOut, purposes: purposesOut, years: yearsOut, totals: { bookings: totals.bookings, hours: totals.hours, people: totals.people.size }, from: from === '0000-00-00' ? '' : from, to };
   if (detail) res.detail = detailRows.sort((a, b) => (a.date + a.lo).localeCompare(b.date + b.lo));
   return json(res);
 }
