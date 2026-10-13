@@ -284,18 +284,21 @@ async function createBooking(c) {
   const people = b.people;
   if (!Number.isInteger(people) || people < 1 || people > cap) fail(400, 'people', `מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-${cap}.`);
   const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
-  let part = [];
-  if (b.participants !== undefined && b.participants !== null) {
-    if (!Array.isArray(b.participants) || b.participants.length > 20) fail(400, 'participants', 'רשימת המשתתפים לא תקינה.');
-    part = [...new Set(b.participants.map(String))].filter((x) => x !== u.id);
-    if (part.length + 1 > people) fail(400, 'people', 'מספר המשתתפים קטן ממספר השמות שנבחרו. עדכנו את מספר המשתתפים.');
-    if (part.length) {
-      const ph = part.map(() => '?').join(',');
-      const ok = (await env.DB.prepare(`SELECT id FROM users WHERE id IN (${ph}) AND profile_done = 1 AND status = 'approved'`).bind(...part).all()).results;
-      if (ok.length !== part.length) fail(400, 'participants', 'אחד מהמשתתפים שנבחרו לא נמצא. רעננו את הדף ובחרו שוב.');
-    }
-    await ensurePeople(env);
+  // חובה לציין אם עובדים לבד או עם אחרים, והמספר חייב להתאים לשמות שנבחרו
+  const mode = b.mode;
+  if (mode !== 'solo' && mode !== 'group') fail(400, 'mode', 'יש לציין אם אתם עובדים לבד או עם אנשים נוספים. אם הדף פתוח כבר זמן רב, רעננו אותו.');
+  const rawPart = b.participants === undefined || b.participants === null ? [] : b.participants;
+  if (!Array.isArray(rawPart) || rawPart.length > 20) fail(400, 'participants', 'רשימת המשתתפים לא תקינה.');
+  const part = [...new Set(rawPart.map(String))].filter((x) => x !== u.id);
+  if (mode === 'solo' && (part.length || people !== 1)) fail(400, 'people', 'בחרתם לעבוד לבד, ולכן מספר המשתתפים חייב להיות 1 וללא שמות נוספים.');
+  if (mode === 'group') {
+    if (!part.length) fail(400, 'people', 'בחרתם לעבוד עם אחרים: יש להוסיף לפחות שם משתתף אחד.');
+    if (people !== part.length + 1) fail(400, 'people', `מספר המשתתפים (${people}) חייב להתאים לשמות שנבחרו (${part.length} נוספים ואתם, ${part.length + 1} בסך הכול).`);
+    const ph = part.map(() => '?').join(',');
+    const ok = (await env.DB.prepare(`SELECT id FROM users WHERE id IN (${ph}) AND profile_done = 1 AND status = 'approved'`).bind(...part).all()).results;
+    if (ok.length !== part.length) fail(400, 'participants', 'אחד מהמשתתפים שנבחרו לא נמצא. רעננו את הדף ובחרו שוב.');
   }
+  if (part.length) await ensurePeople(env);
   const own = (await env.DB.prepare('SELECT hour FROM bookings WHERE user_id = ? AND date = ?').bind(u.id, b.date).all()).results;
   const hrs = new Set(own.map((r) => r.hour)); for (let i = 0; i < dur; i++) hrs.add(start + i);
   if (hrs.size > RULES.MAX_DAY) fail(400, 'quota', `ההזמנה חורגת ממכסה של ${RULES.MAX_DAY} שעות ליום.`);

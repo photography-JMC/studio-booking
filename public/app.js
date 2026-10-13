@@ -407,13 +407,28 @@
     var chosen={};part.forEach(function(x){chosen[x.uid]=1});
     var opts=(S.dir||[]).filter(function(x){return !chosen[x.uid]});
     var solo=!!f.solo&&!part.length&&parseInt(f.people,10)===1;
-    var h='<div class="field"><label class="lbl" for="f-part">משתתפים איתי בעמדה (לא חובה)</label>';
+    var h='<div class="field"><label class="lbl" for="f-part">משתתפים איתי בעמדה (חובה)</label>';
     if(solo)h+='<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px"><span class="chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 10px;background:var(--surface)">אני עובד.ת לבד<button type="button" class="btn ghost" data-act="solo-off" aria-label="ביטול" style="padding:0 8px;min-height:24px;line-height:1">×</button></span></div>';
     else if(!S.dir)h+='<p class="tfnote" style="margin:0">טוען רשימת שמות…</p>';
     else if(part.length+1>=cap)h+='<p class="tfnote" style="margin:0">הגעתם למספר המשתתפים המרבי בהזמנה.</p>';
     else h+='<select id="f-part"><option value="">הוספת שם מהרשימה…</option>'+(part.length?'':'<option value="__solo">אני עובד.ת לבד</option>')+opts.map(function(x){return '<option value="'+esc(x.uid)+'">'+esc(x.name)+(x.role&&x.role!=='סטודנט'?' ('+esc(x.role)+')':'')+'</option>'}).join('')+'</select>';
     if(part.length)h+='<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+part.map(function(x){return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 10px;background:var(--surface)">'+esc(x.name)+'<button type="button" class="btn ghost" data-act="part-rm" data-u="'+esc(x.uid)+'" aria-label="הסרת '+esc(x.name)+'" style="padding:0 8px;min-height:24px;line-height:1">×</button></span>'}).join('')+'</div>';
+    var pm=partMsg();
+    if(pm)h+='<p class="err" style="margin:6px 0 0" id="part-msg">'+esc(pm)+'</p>';
     return h+'</div>';
+  }
+  /* חובה: לציין לבד או עם אחרים, והמספר חייב להתאים לשמות שנבחרו */
+  function partState(){
+    var f=S.form,part=f.part||[],people=parseInt(f.people,10);
+    var solo=!!f.solo&&!part.length&&people===1;
+    return {solo:solo,part:part,people:people};
+  }
+  function partMsg(){
+    var s=partState();
+    if(!s.solo&&!s.part.length)return 'יש לציין אם אתם עובדים לבד: בחרו "אני עובד.ת לבד", או הוסיפו את שמות המשתתפים.';
+    if(!(s.people>=1))return 'יש להזין את מספר המשתתפים.';
+    if(!s.solo&&s.people!==s.part.length+1)return 'מספר המשתתפים ('+s.people+') חייב להתאים לשמות שנבחרו: '+s.part.length+' נוספים ואתם, '+(s.part.length+1)+' בסך הכול.';
+    return '';
   }
   function sideForm(){
     var sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0),f=S.form;
@@ -426,7 +441,7 @@
       '<div class="field"><label class="lbl" for="f-notes">ציוד או הערות לצוות</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       '<p class="pledge">סטודנטים יקרים, הזמנתכם מחייבת, באם אינכם יכולים להגיע, נא לבטל את הזמנת האולפן במועד המוקדם ביותר האפשרי, במידה ואי הגעה למרות ההזמנה תחזור על עצמה, המערכת לא תאפשר לכם להזמין שוב.</p>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
-      '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid?' disabled':'')+'>'+(S.busy?'שומר…':'אישור הזמנה')+'</button>'+
+      '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid||partMsg()?' disabled':'')+'>'+(S.busy?'שומר…':'אישור הזמנה')+'</button>'+
       '<button class="btn ghost" data-act="back">חזרה לשעות</button>';
   }
   function sideDone(){
@@ -999,12 +1014,12 @@
     if(blockedReason(S.date)){S.err='אי אפשר להזמין בתאריך הזה ('+blockedReason(S.date)+').';return renderSide()}
     if(!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
     if(!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
-    var part=(f.part||[]);
-    if(part.length+1>people){S.err='מספר המשתתפים קטן ממספר השמות שנבחרו. עדכנו את מספר המשתתפים.';return renderSide()}
+    var part=(f.part||[]),pm=partMsg();
+    if(pm){S.err=pm;return renderSide()}
     if(myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid})});
+      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group'});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
       renderSide();
@@ -1035,7 +1050,7 @@
     else if(a==='st-sort'){stInit();var k=b.dataset.k;if(S.st.sk===k)S.st.sd=-S.st.sd;else{S.st.sk=k;S.st.sd=(k==='name'||k==='role'||k==='purpose')?1:-1}stRes()}
     else if(a==='st-reset'){var v=S.st&&S.st.view||'people';S.st=null;stInit();S.st.view=v;S.st.sk=v==='people'?'total':'hours';renderStats()}
     else if(a==='st-export'){stExport()}
-    else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});renderSide()}
+    else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});S.form.people=Math.max(1,S.form.part.length+1);renderSide()}
     else if(a==='al-add'){alAdd()}
     else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
     else if(a==='al-nm-edit'){S.alEdit=b.dataset.em;S.alEditVal=b.dataset.nm||'';S.alDel=null;var le=$('#al-list');if(le)le.innerHTML=alListHTML();var ni=$('#al-nm');if(ni)ni.focus()}
@@ -1120,7 +1135,7 @@
   function onField(e){
     var t=e.target,d=t.dataset||{};
     if(t.id==='f-part'){if(e.type==='change'&&t.value==='__solo'){S.form.part=[];S.form.people=1;S.form.solo=true;renderSide();return}
-      if(e.type==='change'&&t.value){S.form.solo=false;var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
+      if(e.type==='change'&&t.value){S.form.solo=false;var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);S.form.people=S.form.part.length+1;renderSide()}}return}
     if(t.id&&t.id.indexOf('st-')===0&&t.id!=='st-res'){stInit();var sk=t.id.slice(3);
       if(sk==='person'){if(e.type==='change'){S.st.q=t.value;var qi=$('#st-q');if(qi)qi.value=t.value;stLoad()}}
       else if(sk==='q'){S.st.q=t.value;var ps=$('#st-person');if(ps&&e.type==='input'&&ps.value&&ps.value.toLowerCase()!==String(t.value).toLowerCase())ps.value='';if(e.type==='input'){clearTimeout(stTimer);stTimer=setTimeout(stLoad,350)}}
@@ -1136,7 +1151,7 @@
       }
       return;
     }
-    if(d.f)S.form[d.f]=t.value;
+    if(d.f){S.form[d.f]=t.value;if(d.f==='people'&&e.type==='change'&&S.step==='form')renderSide()}
     if(d.t)S[d.t]=t.value;
     if(d.r)S.reg[d.r]=t.type==='checkbox'?t.checked:t.value;
   }
