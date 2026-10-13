@@ -406,10 +406,12 @@
     if(!S.dir&&!S.dirBusy){S.dirBusy=true;api('GET','/api/people').then(function(r){S.dir=r.items||[];S.dirAt=Date.now();S.dirBusy=false;if(S.step==='form')renderSide()},function(){S.dir=[];S.dirBusy=false})}
     var chosen={};part.forEach(function(x){chosen[x.uid]=1});
     var opts=(S.dir||[]).filter(function(x){return !chosen[x.uid]});
+    var solo=!!f.solo&&!part.length&&parseInt(f.people,10)===1;
     var h='<div class="field"><label class="lbl" for="f-part">משתתפים איתי בעמדה (לא חובה)</label>';
-    if(!S.dir)h+='<p class="tfnote" style="margin:0">טוען רשימת שמות…</p>';
+    if(solo)h+='<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px"><span class="chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 10px;background:var(--surface)">אני עובד.ת לבד<button type="button" class="btn ghost" data-act="solo-off" aria-label="ביטול" style="padding:0 8px;min-height:24px;line-height:1">×</button></span></div>';
+    else if(!S.dir)h+='<p class="tfnote" style="margin:0">טוען רשימת שמות…</p>';
     else if(part.length+1>=cap)h+='<p class="tfnote" style="margin:0">הגעתם למספר המשתתפים המרבי בהזמנה.</p>';
-    else h+='<select id="f-part"><option value="">הוספת שם מהרשימה…</option>'+opts.map(function(x){return '<option value="'+esc(x.uid)+'">'+esc(x.name)+(x.role&&x.role!=='סטודנט'?' ('+esc(x.role)+')':'')+'</option>'}).join('')+'</select>';
+    else h+='<select id="f-part"><option value="">הוספת שם מהרשימה…</option>'+(part.length?'':'<option value="__solo">אני עובד.ת לבד</option>')+opts.map(function(x){return '<option value="'+esc(x.uid)+'">'+esc(x.name)+(x.role&&x.role!=='סטודנט'?' ('+esc(x.role)+')':'')+'</option>'}).join('')+'</select>';
     if(part.length)h+='<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+part.map(function(x){return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 10px;background:var(--surface)">'+esc(x.name)+'<button type="button" class="btn ghost" data-act="part-rm" data-u="'+esc(x.uid)+'" aria-label="הסרת '+esc(x.name)+'" style="padding:0 8px;min-height:24px;line-height:1">×</button></span>'}).join('')+'</div>';
     return h+'</div>';
   }
@@ -926,7 +928,7 @@
       forceRefresh();
       return;
     }
-    S.form.part=[];
+    S.form.part=[];S.form.solo=false;
     S.busy=false;S.done={studios:S.studios.slice(),date:S.date,from:S.start,to:S.start+S.dur};
     S.step='done';S.start=null;
     renderSide();
@@ -944,6 +946,7 @@
     var b=e.target.closest('[data-act]'); if(!b)return;
     var a=b.dataset.act;
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
+    else if(a==='solo-off'){S.form.solo=false;renderSide()}
     else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});renderSide()}
     else if(a==='al-add'){alAdd()}
     else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
@@ -1028,7 +1031,8 @@
   });
   function onField(e){
     var t=e.target,d=t.dataset||{};
-    if(t.id==='f-part'){if(e.type==='change'&&t.value){var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
+    if(t.id==='f-part'){if(e.type==='change'&&t.value==='__solo'){S.form.part=[];S.form.people=1;S.form.solo=true;renderSide();return}
+      if(e.type==='change'&&t.value){S.form.solo=false;var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
     if(t.classList&&t.classList.contains('al-rolesel')){if(e.type==='change')alSetRole(d.em,t.value);return}
