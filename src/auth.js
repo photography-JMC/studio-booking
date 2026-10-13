@@ -35,7 +35,7 @@ export async function verifyGoogleToken(idToken, env) {
   if (!(payload.exp > now - 30) || (payload.iat && payload.iat > now + 300)) bad();
   if (payload.email_verified !== true && payload.email_verified !== 'true') bad();
   const email = String(payload.email || '').toLowerCase();
-  if (!EMAIL_RE.test(email) || payload.hd !== EMAIL_DOMAIN) fail(403, 'domain', 'הכניסה אפשרית רק עם חשבון Google של המכללה, בסיומת @' + EMAIL_DOMAIN);
+  if (!EMAIL_RE.test(email) || payload.hd !== EMAIL_DOMAIN) fail(403, 'domain', 'הכניסה אפשרית רק עם חשבון Google של המכללה, בסיומת \u2066@' + EMAIL_DOMAIN + '\u2069');
   if (!payload.sub) bad();
   return { sub: String(payload.sub), email, gname: String(payload.name || '').slice(0, 80) };
 }
