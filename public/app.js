@@ -565,11 +565,38 @@
     h+='<div class="field"><label class="lbl" for="al-role">תפקיד לכתובות שמודבקות עכשיו (קובע גם את הצבע שלהם במפה)</label><select id="al-role" data-t="alRole">'+YEARS.map(function(y){return '<option'+((S.alRole||'סטודנט')===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>';
     h+='<div class="field"><label class="lbl" for="al-text">הדביקו כתובות מייל (אחת בכל שורה, או מופרדות ברווח או בפסיק)</label><textarea id="al-text" data-t="alText" dir="ltr" rows="5" placeholder="name@edu.jmc.ac.il">'+esc(S.alText||'')+'</textarea></div>';
     if(S.alMsg)h+='<p style="margin:0" role="status"><b>'+esc(S.alMsg)+'</b></p>';
-    h+='<div class="acts"><button class="btn" data-act="al-add"'+(S.alWork?' disabled':'')+'>הוספה לרשימה</button>';
+    h+='<div class="acts"><button class="btn" data-act="al-add"'+(S.alWork?' disabled':'')+'>הוספה לרשימה</button><button class="btn ghost" data-act="al-show" aria-expanded="'+(!!S.alShow)+'">'+(S.alShow?'הסתרת רשימת האנשים':'הצגת רשימת האנשים')+'</button>';
     if(S.alClear)h+='<button class="btn danger" data-act="al-clear-yes">כן, לנקות את הרשימה</button><button class="btn ghost" data-act="al-clear-no">ביטול</button>';
     else if(S.alCount)h+='<button class="btn ghost" data-act="al-clear-ask">ניקוי הרשימה</button>';
-    h+='</div><p class="tfnote" style="margin:0">ניקוי הרשימה לא מבטל אישורים שכבר ניתנו. נרשמים שממתינים ומופיעים ברשימה מאושרים מיד בהוספה.</p></div>';
+    h+='</div>';
+    if(S.alShow)h+='<div class="field"><label class="lbl" for="al-q">חיפוש ברשימה</label><input id="al-q" dir="ltr" style="text-align:right" placeholder="שם או מייל" value="'+esc(S.alQ||'')+'"></div><div id="al-list">'+alListHTML()+'</div>';
+    h+='<p class="tfnote" style="margin:0">הסרה מהרשימה וניקוי הרשימה לא מבטלים אישורים שכבר ניתנו. נרשמים שממתינים ומופיעים ברשימה מאושרים מיד בהוספה.</p></div>';
     return h;
+  }
+  function alListHTML(){
+    if(!S.alItems)return '<p style="margin:0">טוען…</p>';
+    var q=(S.alQ||'').trim().toLowerCase();
+    var it=S.alItems.filter(function(x){return !q||x.email.indexOf(q)>=0||(x.name||'').toLowerCase().indexOf(q)>=0});
+    if(!it.length)return '<div class="card empty"><p style="margin:0">'+(S.alItems.length?'אין תוצאות לחיפוש.':'הרשימה ריקה.')+'</p></div>';
+    var cap=it.length>300;
+    return '<p class="tfnote" style="margin:0 0 6px">מוצגים '+Math.min(it.length,300)+' מתוך '+it.length+(cap?' (צמצמו בחיפוש)':'')+'</p><div class="list" style="max-height:420px;overflow:auto">'+it.slice(0,300).map(function(x){
+      var ask=S.alDel===x.email;
+      return '<div class="card item"><div><h3 dir="ltr" style="text-align:right">'+esc(x.email)+'</h3><p>'+(x.name?esc(x.name)+' · ':'')+(x.status?(x.status==='approved'?'רשום/ה ומאושר/ת':x.status==='pending'?'רשום/ה וממתין/ה':x.status==='rejected'?'נדחה':'הוסר/ה'):'עוד לא נרשם/ה')+'</p></div><div class="acts">'+
+        '<select class="al-rolesel" data-em="'+esc(x.email)+'" aria-label="תפקיד">'+YEARS.map(function(y){return '<option'+(x.role===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select>'+
+        (ask?'<button class="btn danger" data-act="al-del-yes" data-em="'+esc(x.email)+'">כן, להסיר</button><button class="btn ghost" data-act="al-del-no">ביטול</button>':'<button class="btn ghost" data-act="al-del" data-em="'+esc(x.email)+'">הסרה</button>')+'</div></div>'}).join('')+'</div>';
+  }
+  async function alLoadList(){
+    try{var r=await api('GET','/api/admin/allowlist/list');S.alItems=r.items}catch(e){S.alItems=[];flash(e.message)}
+    if(S.tab==='all')renderAdmin();
+  }
+  async function alSetRole(em,role){
+    try{await api('POST','/api/admin/allowlist/role',{email:em,role:role});S.alMsg='התפקיד של '+em+' עודכן ל'+role+'.';S.alBy=null;S.alCount=null;S.alItems=null;await forceRefresh()}catch(e){S.alMsg=e.message||'שגיאה'}
+    if(S.alShow)alLoadList();renderAdmin();
+  }
+  async function alDel(em){
+    S.alDel=null;
+    try{await api('POST','/api/admin/allowlist/remove',{email:em});S.alMsg='הכתובת הוסרה מהרשימה. אישור שכבר ניתן נשאר בתוקף.';S.alBy=null;S.alCount=null;S.alItems=null}catch(e){S.alMsg=e.message||'שגיאה'}
+    if(S.alShow)alLoadList();renderAdmin();
   }
   async function alAdd(){
     S.alWork=true;S.alMsg='';renderAdmin();
@@ -577,6 +604,7 @@
       var r=await api('POST','/api/admin/allowlist',{text:S.alText||'',role:S.alRole||'סטודנט'});
       S.alCount=r.count;S.alText='';S.alBy=null;S.alCount=null;
       S.alMsg='נוספו '+r.added+' כתובות בתפקיד '+(S.alRole||'סטודנט')+(r.approvedNow?', ואושרו '+r.approvedNow+' נרשמים שהמתינו':'')+(r.invalid.length?'. לא תקינות והתעלמנו: '+r.invalid.join(', '):'')+'.';
+      S.alItems=null;if(S.alShow)alLoadList();
       await forceRefresh();
     }catch(e){S.alMsg=e.message||'שגיאה'}
     S.alWork=false;if(S.tab==='all')renderAdmin();
@@ -677,7 +705,7 @@
     }catch(e){S.cleanMsg='הניקוי הופסק. אפשר לנסות שוב.'}
     S.cleanStep=null;render();
   }
-  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
+  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',allowlist_role:'שינוי תפקיד ברשימה',allowlist_remove:'הסרה מהרשימה האוטומטית',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
   async function loadAudit(){
     try{var r=await api('GET','/api/admin/audit');S.audit=r.items}catch(e){flash(e.message)}
     render();
@@ -895,6 +923,10 @@
     var a=b.dataset.act;
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
     else if(a==='al-add'){alAdd()}
+    else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
+    else if(a==='al-del'){S.alDel=b.dataset.em;var l=$('#al-list');if(l)l.innerHTML=alListHTML()}
+    else if(a==='al-del-no'){S.alDel=null;var l2=$('#al-list');if(l2)l2.innerHTML=alListHTML()}
+    else if(a==='al-del-yes'){alDel(b.dataset.em)}
     else if(a==='al-clear-ask'){S.alClear=true;renderAdmin()}
     else if(a==='al-clear-no'){S.alClear=false;renderAdmin()}
     else if(a==='al-clear-yes'){alClear()}
@@ -970,6 +1002,8 @@
   });
   function onField(e){
     var t=e.target,d=t.dataset||{};
+    if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
+    if(t.classList&&t.classList.contains('al-rolesel')){if(e.type==='change')alSetRole(d.em,t.value);return}
     if(d.photo){
       if(e.type==='change'&&t.files&&t.files[0]){
         photoFrom(t.files[0]).then(function(url){S.reg.photo=url;S.regErr='';renderReg()},function(){S.regErr='אי אפשר לקרוא את הקובץ הזה. נסו תמונה אחרת (JPG או PNG).';renderReg()});

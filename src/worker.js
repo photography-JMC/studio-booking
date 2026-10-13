@@ -150,6 +150,9 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'GET' && path === '/api/admin/allowlist') res = await allowCount(c);
   else if (method === 'POST' && path === '/api/admin/allowlist') res = await allowAdd(c);
   else if (method === 'POST' && path === '/api/admin/allowlist/clear') res = await allowClear(c);
+  else if (method === 'GET' && path === '/api/admin/allowlist/list') res = await allowList(c);
+  else if (method === 'POST' && path === '/api/admin/allowlist/role') res = await allowSetRole(c);
+  else if (method === 'POST' && path === '/api/admin/allowlist/remove') res = await allowRemove(c);
   else fail(404, 'not_found', 'לא נמצא.');
   if (c.refreshCookie) res.headers.append('Set-Cookie', cookieHeader(c.refreshCookie, SESSION_MS / 1000));
   return res;
@@ -418,6 +421,36 @@ async function allowAdd(c) {
   await env.DB.batch([audit(env, a, 'allowlist_add', String(emails.length)), bump(env)]);
   const count = (await env.DB.prepare('SELECT COUNT(*) AS n FROM allowlist').first()).n;
   return json({ ok: true, added: emails.length, invalid: bad, count, approvedNow: (ap.meta && ap.meta.changes) || 0 });
+}
+async function allowList(c) {
+  await needAdmin(c);
+  try {
+    const r = await c.env.DB.prepare('SELECT a.email AS email, a.role AS role, u.name AS name, u.status AS status, u.profile_done AS done FROM allowlist a LEFT JOIN users u ON u.email = a.email ORDER BY a.email LIMIT 3000').all();
+    return json({ items: r.results.map((x) => ({ email: x.email, role: x.role, name: x.done ? x.name : '', status: x.done ? x.status : '' })) });
+  } catch (e) { return json({ items: [] }); }
+}
+async function allowSetRole(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const b = await readBody(request);
+  const email = String(b.email || '').toLowerCase();
+  if (!EMAIL_RE.test(email) || !YEARS.includes(b.role)) fail(400, 'bad', 'נתונים לא תקינים.');
+  const r = await env.DB.prepare('UPDATE allowlist SET role = ? WHERE email = ?').bind(b.role, email).run();
+  if (!((r.meta && r.meta.changes) || 0)) fail(404, 'gone', 'הכתובת לא נמצאת ברשימה.');
+  const st = [audit(env, a, 'allowlist_role', email, b.role), bump(env)];
+  if (!isAdminEmail(email)) st.unshift(
+    env.DB.prepare('UPDATE users SET role = ? WHERE email = ? AND profile_done = 1').bind(b.role, email),
+    env.DB.prepare('UPDATE bookings SET role = ? WHERE email = ? AND date >= ?').bind(b.role, email, israelNow().date));
+  await env.DB.batch(st);
+  return json({ ok: true });
+}
+async function allowRemove(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const email = String((await readBody(request)).email || '').toLowerCase();
+  if (!EMAIL_RE.test(email)) fail(400, 'bad', 'נתונים לא תקינים.');
+  await env.DB.batch([env.DB.prepare('DELETE FROM allowlist WHERE email = ?').bind(email), audit(env, a, 'allowlist_remove', email), bump(env)]);
+  return json({ ok: true });
 }
 async function allowClear(c) {
   const { env } = c;
