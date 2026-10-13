@@ -157,6 +157,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'GET' && path === '/api/admin/export') res = await exportData(c);
   else if (method === 'POST' && path === '/api/admin/cleanup') res = await cleanupYear(c);
   else if (method === 'GET' && path === '/api/admin/audit') res = await auditList(c);
+  else if (method === 'GET' && path === '/api/admin/stats') res = await statsData(c);
   else if (method === 'GET' && path === '/api/admin/allowlist') res = await allowCount(c);
   else if (method === 'POST' && path === '/api/admin/allowlist') res = await allowAdd(c);
   else if (method === 'POST' && path === '/api/admin/allowlist/clear') res = await allowClear(c);
@@ -647,13 +648,77 @@ async function releaseUser(c) {
 async function exportData(c) {
   const { env } = c;
   const a = await needAdmin(c);
+  await ensurePeople(env);
   const out = await env.DB.batch([
     env.DB.prepare('SELECT name,email,role,status,created_at FROM users WHERE profile_done = 1 ORDER BY name'),
-    env.DB.prepare('SELECT gid,date,MIN(hour) AS lo,MAX(hour) AS hi,group_concat(DISTINCT studio) AS st,name,email,role,purpose,people,notes FROM bookings GROUP BY gid ORDER BY date, lo'),
+    env.DB.prepare("SELECT b.gid AS gid,b.date AS date,MIN(b.hour) AS lo,MAX(b.hour) AS hi,group_concat(DISTINCT b.studio) AS st,b.name AS name,b.email AS email,b.role AS role,b.purpose AS purpose,b.people AS people,b.notes AS notes,(SELECT group_concat(u.name, ', ') FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid = b.gid) AS withp FROM bookings b GROUP BY b.gid ORDER BY b.date, lo"),
     env.DB.prepare('SELECT name,email,end_at FROM noshows ORDER BY end_at'),
     audit(env, a, 'export', ''),
   ]);
   return json({ users: out[0].results, bookings: out[1].results, noshows: out[2].results });
+}
+/* ---------- סטטיסטיקה: כמה כל אדם היה פעיל באולפנים, ובאיזה סוג פעילות ---------- */
+async function statsData(c) {
+  const { env, url } = c;
+  await needAdmin(c);
+  await ensurePeople(env);
+  const sp = url.searchParams, today = israelNow().date;
+  const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 60);
+  const purpose = PURPOSES.includes(sp.get('purpose')) ? sp.get('purpose') : '';
+  const role = YEARS.includes(sp.get('role')) ? sp.get('role') : '';
+  const from = validDate(sp.get('from') || '') ? sp.get('from') : '0000-00-00';
+  const to = validDate(sp.get('to') || '') ? sp.get('to') : today; // ברירת מחדל: עד היום, בלי הזמנות עתידיות
+  const detail = sp.get('detail') === '1';
+  const out = await env.DB.batch([
+    env.DB.prepare(`SELECT b.gid AS gid, b.date AS date, b.user_id AS uid, b.purpose AS purpose, b.people AS people, b.notes AS notes,
+        MIN(b.hour) AS lo, MAX(b.hour) + 1 AS hi, group_concat(DISTINCT b.studio) AS st,
+        COALESCE(NULLIF(u.name, ''), b.name) AS name, COALESCE(u.email, b.email) AS email, COALESCE(NULLIF(u.role, ''), b.role) AS role
+      FROM bookings b LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.user_id <> 'sys-classes' AND b.date >= ? AND b.date <= ? GROUP BY b.gid`).bind(from, to),
+    env.DB.prepare(`SELECT bp.gid AS gid, bp.uid AS uid, u.name AS name, u.email AS email, u.role AS role
+      FROM booking_people bp JOIN users u ON u.id = bp.uid
+      WHERE bp.gid IN (SELECT gid FROM bookings WHERE date >= ? AND date <= ?)`).bind(from, to),
+    env.DB.prepare('SELECT gid, user_id FROM noshows WHERE date >= ? AND date <= ?').bind(from, to),
+  ]);
+  const parts = {};
+  for (const r of out[1].results) (parts[r.gid] = parts[r.gid] || []).push(r);
+  const noshow = new Set(out[2].results.map((r) => r.gid));
+  const match = (p) => (!role || p.role === role) && (!q || String(p.name || '').toLowerCase().includes(q) || String(p.email || '').toLowerCase().includes(q));
+  const people = new Map(), purposes = new Map(), detailRows = [];
+  const person = (uid, name, email, rl) => {
+    if (!people.has(uid)) people.set(uid, { uid, name: name || '', email: email || '', role: rl || '', bookings: 0, hours: 0, pBookings: 0, pHours: 0, noshows: 0, by: new Map() });
+    return people.get(uid);
+  };
+  const totals = { bookings: 0, hours: 0, people: new Set() };
+  for (const g of out[0].results) {
+    if (purpose && g.purpose !== purpose) continue;
+    const hours = Math.max(1, g.hi - g.lo), ps = (parts[g.gid] || []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name), 'he'));
+    const involved = [{ uid: g.uid, name: g.name, email: g.email, role: g.role, owner: true }, ...ps.map((x) => ({ uid: x.uid, name: x.name, email: x.email, role: x.role }))];
+    if (!involved.some(match)) continue; // בלי סינון: כולם. עם סינון: הזמנות שמעורב בהן מישהו שמתאים
+    totals.bookings++; totals.hours += hours;
+    const pu = purposes.get(g.purpose) || { purpose: g.purpose, bookings: 0, hours: 0, personHours: 0, who: new Set() };
+    pu.bookings++; pu.hours += hours; pu.personHours += hours * Math.max(1, g.people || 1);
+    purposes.set(g.purpose, pu);
+    for (const x of involved) {
+      pu.who.add(x.uid); totals.people.add(x.uid);
+      if (!match(x)) continue;
+      const pr = person(x.uid, x.name, x.email, x.role);
+      if (x.owner) { pr.bookings++; pr.hours += hours; if (noshow.has(g.gid)) pr.noshows++; } else { pr.pBookings++; pr.pHours += hours; }
+      pr.by.set(g.purpose, (pr.by.get(g.purpose) || 0) + 1);
+    }
+    if (detail && detailRows.length < 20000) detailRows.push({
+      date: g.date, lo: g.lo, hi: g.hi, st: g.st, name: g.name, email: g.email, role: g.role, purpose: g.purpose, people: g.people,
+      with: ps.map((x) => x.name).join(', '), noshow: noshow.has(g.gid), notes: g.notes,
+    });
+  }
+  const peopleOut = [...people.values()].map((p) => ({
+    uid: p.uid, name: p.name, email: p.email, role: p.role, bookings: p.bookings, hours: p.hours, pBookings: p.pBookings, pHours: p.pHours,
+    total: p.hours + p.pHours, noshows: p.noshows, by: [...p.by.entries()].sort((a, b) => b[1] - a[1]),
+  })).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name), 'he'));
+  const purposesOut = [...purposes.values()].map((x) => ({ purpose: x.purpose, bookings: x.bookings, hours: x.hours, personHours: x.personHours, people: x.who.size })).sort((a, b) => b.hours - a.hours);
+  const res = { people: peopleOut, purposes: purposesOut, totals: { bookings: totals.bookings, hours: totals.hours, people: totals.people.size }, from: from === '0000-00-00' ? '' : from, to };
+  if (detail) res.detail = detailRows.sort((a, b) => (a.date + a.lo).localeCompare(b.date + b.lo));
+  return json(res);
 }
 async function cleanupYear(c) {
   const { env } = c;

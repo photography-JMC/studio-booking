@@ -304,7 +304,7 @@
   function adminTab(){return isAdmin()}
   function renderTabs(){
     var t=[['book','הזמנה חדשה'],['mine','האזור שלי']];
-    if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')])}
+    if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')]);t.push(['stats','סטטיסטיקה'])}
     $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('');
     $('#who').innerHTML=(S.profile?avatarHTML(S.profile)+'<span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<button class="btn ghost" data-act="logout">התנתקות</button>':'');
   }
@@ -672,7 +672,7 @@
     var x='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="'+Math.max(w,1)+'" width="22" customWidth="1"/></cols><sheetData>';
     rows.forEach(function(r,i){
       x+='<row r="'+(i+1)+'">';
-      r.forEach(function(v,j){x+='<c r="'+colL(j)+(i+1)+'" t="inlineStr"'+(i===0?' s="1"':'')+'><is><t xml:space="preserve">'+xesc(v)+'</t></is></c>'});
+      r.forEach(function(v,j){x+=(typeof v==='number'&&isFinite(v)&&i>0)?'<c r="'+colL(j)+(i+1)+'"><v>'+v+'</v></c>':'<c r="'+colL(j)+(i+1)+'" t="inlineStr"'+(i===0?' s="1"':'')+'><is><t xml:space="preserve">'+xesc(v)+'</t></is></c>'});
       x+='</row>';
     });
     return x+'</sheetData></worksheet>';
@@ -697,6 +697,74 @@
     return zipStore(files);
   }
   function dmy(s){var p=String(s||'').split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:String(s||'')}
+  /* ===== סטטיסטיקה ===== */
+  function stInit(){if(!S.st)S.st={q:'',purpose:'',role:'',from:'',to:'',view:'people',sk:'total',sd:-1,data:null,busy:false,err:''}}
+  function stQuery(detail){
+    var s=S.st,p=[];
+    if(s.q)p.push('q='+encodeURIComponent(s.q));
+    if(s.purpose)p.push('purpose='+encodeURIComponent(s.purpose));
+    if(s.role)p.push('role='+encodeURIComponent(s.role));
+    if(s.from)p.push('from='+s.from);
+    if(s.to)p.push('to='+s.to);
+    if(detail)p.push('detail=1');
+    return p.length?'?'+p.join('&'):'';
+  }
+  var stTimer=null,stSeq=0;
+  function stLoad(){
+    stInit();var my=++stSeq;S.st.busy=true;S.st.err='';stRes();
+    return api('GET','/api/admin/stats'+stQuery(false)).then(function(r){if(my!==stSeq)return;S.st.data=r;S.st.busy=false;stRes()},function(e){if(my!==stSeq)return;S.st.busy=false;S.st.err=e.message||'שגיאה';stRes()});
+  }
+  function renderStats(){
+    stInit();var s=S.st;
+    var h='<div class="admin"><h3>סטטיסטיקה: כמה כל אחד היה פעיל באולפנים</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">'+
+      '<p class="tfnote" style="margin:0">הנתונים כוללים הזמנות שהתקיימו (עד התאריך שנבחר, ברירת מחדל: היום). המזמין והמשתתפים שנבחרו איתו נספרים. ניקוי סוף שנה מוחק את הנתונים, לכן יש להוריד אקסל לפני כן.</p>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-q">חיפוש לפי שם או מייל</label><input id="st-q" placeholder="חיפוש" value="'+esc(s.q)+'"></div>'+
+      '<div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
+      '<div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div><div></div></div>'+
+      '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
+      '</div><div id="st-res"></div></div>';
+    $('#main').innerHTML=h;
+    if(!s.data&&!s.busy)stLoad();else stRes();
+  }
+  var ST_COLS=[['name','שם'],['role','תפקיד'],['bookings','הזמנות'],['hours','שעות כמזמין'],['pBookings','השתתפויות'],['pHours','שעות כמשתתף'],['total','סה"כ שעות'],['noshows','אי-הגעות']];
+  var PU_COLS=[['purpose','סוג פעילות'],['bookings','הזמנות'],['hours','שעות'],['personHours','שעות-אדם'],['people','אנשים שונים']];
+  function stSorted(rows){
+    var k=S.st.sk,d=S.st.sd;
+    return rows.slice().sort(function(a,b){var x=a[k],y=b[k];if(typeof x==='string'||typeof y==='string')return d*String(x||'').localeCompare(String(y||''),'he');return d*((x||0)-(y||0))});
+  }
+  function stRes(){
+    var el=$('#st-res');if(!el)return;stInit();var s=S.st,r=s.data;
+    if(s.err){el.innerHTML='<div class="card"><p class="err" role="alert" style="margin:0">'+esc(s.err)+'</p></div>';return}
+    if(!r){el.innerHTML='<div class="card empty"><p style="margin:0">טוען…</p></div>';return}
+    var h='<p style="margin:8px 0"><b>'+r.totals.bookings+'</b> הזמנות · <b>'+r.totals.hours+'</b> שעות · <b>'+r.totals.people+'</b> אנשים'+(s.busy?' · מעדכן…':'')+'</p>';
+    var cols=s.view==='people'?ST_COLS:PU_COLS,rows=s.view==='people'?r.people:r.purposes;
+    if(!rows.length){el.innerHTML=h+'<div class="card empty"><p style="margin:0">אין נתונים לסינון הזה.</p></div>';return}
+    h+='<div class="sttwrap"><table class="stt"><thead><tr>'+cols.map(function(c){return '<th scope="col"><button type="button" class="sth" data-act="st-sort" data-k="'+c[0]+'">'+c[1]+(s.sk===c[0]?(s.sd<0?' ▼':' ▲'):'')+'</button></th>'}).join('')+'</tr></thead><tbody>';
+    stSorted(rows).forEach(function(x){
+      if(s.view==='people')h+='<tr><td><b>'+esc(x.name||'(ללא שם)')+'</b><br><span class="stsub" dir="ltr">'+esc(x.email||'')+'</span>'+(x.by.length?'<br><span class="stsub">'+x.by.slice(0,3).map(function(b){return esc(b[0])+' ('+b[1]+')'}).join(' · ')+'</span>':'')+'</td><td>'+roleChip(x.role)+'</td><td>'+x.bookings+'</td><td>'+x.hours+'</td><td>'+x.pBookings+'</td><td>'+x.pHours+'</td><td><b>'+x.total+'</b></td><td'+(x.noshows?' class="al-no"':'')+'>'+x.noshows+'</td></tr>';
+      else h+='<tr><td><b>'+esc(x.purpose)+'</b></td><td>'+x.bookings+'</td><td>'+x.hours+'</td><td>'+x.personHours+'</td><td>'+x.people+'</td></tr>';
+    });
+    el.innerHTML=h+'</tbody></table></div><p class="tfnote">שעות כמזמין: אורך ההזמנות שהוא הזמין. שעות כמשתתף: הזמנות של אחרים שנבחר בהן כמשתתף. שעות-אדם: אורך ההזמנה כפול מספר המשתתפים שהוזן בה.</p>';
+  }
+  async function stExport(){
+    stInit();S.st.exporting=true;renderStats();
+    try{
+      var r=await api('GET','/api/admin/stats'+stQuery(true));
+      var ppl=[['שם','מייל','תפקיד','הזמנות כמזמין','שעות כמזמין','השתתפויות','שעות כמשתתף','סה"כ שעות','אי-הגעות','סוגי פעילות']];
+      r.people.forEach(function(x){ppl.push([x.name||'',x.email||'',x.role||'',x.bookings,x.hours,x.pBookings,x.pHours,x.total,x.noshows,x.by.map(function(b){return b[0]+' ('+b[1]+')'}).join(', ')])});
+      var pur=[['סוג פעילות','הזמנות','שעות','שעות-אדם','אנשים שונים']];
+      r.purposes.forEach(function(x){pur.push([x.purpose,x.bookings,x.hours,x.personHours,x.people])});
+      var det=[['תאריך','משעה','עד שעה','עמדות','שם המזמין','מייל','תפקיד','סוג פעילות','משתתפים','שמות המשתתפים','לא הגיע','הערות']];
+      (r.detail||[]).forEach(function(o){det.push([dmy(o.date),hh(o.lo),hh(o.hi),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.with||'',o.noshow?'כן':'',o.notes||''])});
+      var info=[['פרמטר','ערך'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
+      var blob=buildXlsx([{name:'לפי אנשים',rows:ppl},{name:'לפי סוג פעילות',rows:pur},{name:'הזמנות מפורטות',rows:det},{name:'פרטי הסינון',rows:info}]);
+      var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='studio-stats-'+ds(new Date())+'.xlsx';document.body.appendChild(a);a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
+    }catch(e){flash(e.message||'שגיאה')}
+    S.st.exporting=false;if(S.tab==='stats')renderStats();
+  }
   async function exportXlsx(){
     if(!isAdmin())return;
     var d;
@@ -704,8 +772,8 @@
     var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
     var users=[['שם','מייל','תפקיד','סטטוס','תאריך הרשמה']];
     d.users.forEach(function(m){users.push([m.name||'',m.email||'',m.role||'',tag[m.status||'pending']||'',m.created_at?new Date(m.created_at).toLocaleDateString('he-IL'):''])});
-    var bookings=[['תאריך','משעה','עד שעה','עמדות','שם','מייל','תפקיד','מטרה','משתתפים','הערות']];
-    d.bookings.forEach(function(o){bookings.push([dmy(o.date),hh(o.lo),hh(o.hi+1),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.notes||''])});
+    var bookings=[['תאריך','משעה','עד שעה','עמדות','שם','מייל','תפקיד','מטרה','משתתפים','שמות המשתתפים','הערות']];
+    d.bookings.forEach(function(o){bookings.push([dmy(o.date),hh(o.lo),hh(o.hi+1),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.withp||'',o.notes||''])});
     var nos=[['שם','מייל','תאריך הזמנה']];
     d.noshows.forEach(function(x){nos.push([x.name||'',x.email||'',x.end_at?new Date(x.end_at).toLocaleDateString('he-IL'):''])});
     var blob=buildXlsx([{name:'משתמשים',rows:users},{name:'הזמנות',rows:bookings},{name:'אי-הגעות',rows:nos}]);
@@ -779,6 +847,7 @@
     if(needReg())return renderReg();
     if(S.tab==='mine')return renderMe();
     if(S.tab==='all'&&isAdmin())return renderAdmin();
+    if(S.tab==='stats'&&isAdmin())return renderStats();
     var list=groups();
     var html;
     if(!list.length) html='<div class="card empty"><p style="margin:0">אין הזמנות קרובות באולפנים.</p></div>';
@@ -947,6 +1016,10 @@
     var a=b.dataset.act;
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
     else if(a==='solo-off'){S.form.solo=false;renderSide()}
+    else if(a==='st-view'){stInit();S.st.view=b.dataset.v;S.st.sk=b.dataset.v==='people'?'total':'hours';S.st.sd=-1;renderStats()}
+    else if(a==='st-sort'){stInit();var k=b.dataset.k;if(S.st.sk===k)S.st.sd=-S.st.sd;else{S.st.sk=k;S.st.sd=(k==='name'||k==='role'||k==='purpose')?1:-1}stRes()}
+    else if(a==='st-reset'){var v=S.st&&S.st.view||'people';S.st=null;stInit();S.st.view=v;S.st.sk=v==='people'?'total':'hours';renderStats()}
+    else if(a==='st-export'){stExport()}
     else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});renderSide()}
     else if(a==='al-add'){alAdd()}
     else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
@@ -1033,6 +1106,10 @@
     var t=e.target,d=t.dataset||{};
     if(t.id==='f-part'){if(e.type==='change'&&t.value==='__solo'){S.form.part=[];S.form.people=1;S.form.solo=true;renderSide();return}
       if(e.type==='change'&&t.value){S.form.solo=false;var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
+    if(t.id&&t.id.indexOf('st-')===0&&t.id!=='st-res'){stInit();var sk=t.id.slice(3);
+      if(sk==='q'){S.st.q=t.value;if(e.type==='input'){clearTimeout(stTimer);stTimer=setTimeout(stLoad,350)}}
+      else if(e.type==='change'){S.st[sk]=t.value;stLoad()}
+      return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
     if(t.classList&&t.classList.contains('al-rolesel')){if(e.type==='change')alSetRole(d.em,t.value);return}

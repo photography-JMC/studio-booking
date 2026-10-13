@@ -248,3 +248,13 @@ body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10p
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--al-ok:#4ADE80;--al-no:#F87171}}
 :root[data-theme="dark"]{--al-ok:#4ADE80;--al-no:#F87171}
 .card h3.al-ok{color:var(--al-ok)}.card h3.al-no{color:var(--al-no)}
+.sttwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.stt{width:100%;border-collapse:collapse;font-size:15px}
+.stt th,.stt td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);vertical-align:top}
+.stt tbody tr:last-child td{border-bottom:0}
+.stt thead th{background:var(--surface);white-space:nowrap}
+.stt .sth{all:unset;cursor:pointer;font-weight:700;color:var(--ink)}
+.stt .sth:focus-visible{outline:2px solid var(--accent-fg);outline-offset:2px}
+.stt .stsub{color:var(--muted);font-size:13px}
+.stt td.al-no{color:var(--al-no);font-weight:700}
+@media(max-width:700px){.stt{font-size:14px}.stt th,.stt td{padding:6px 7px}}
