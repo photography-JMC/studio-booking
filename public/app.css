@@ -243,4 +243,4 @@ textarea{resize:vertical;min-height:64px}
   .roleidx{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;gap:4px 14px;padding:8px 12px;font-size:13px}
   .roleidx b{flex:1 1 100%}
 }
-body.lg .credit{background:rgba(128,128,128,.5);padding:14px 12px;border-radius:10px}
+body.lg .credit{background:rgba(40,40,40,.7);padding:10px 16px;border-radius:10px;width:fit-content;max-width:calc(100% - 24px);margin:36px auto 0}

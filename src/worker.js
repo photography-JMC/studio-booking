@@ -305,7 +305,7 @@ async function sendTransfer(c) {
   await rateLimit(env, 'w:' + u.id, 40, 60);
   const b = await readBody(request);
   const to = String(b.toEmail || '').trim().toLowerCase();
-  if (!EMAIL_RE.test(to)) fail(400, 'email', 'נא להזין מייל ארגוני בסיומת \u2066@' + EMAIL_DOMAIN + '\u2069' + '.');
+  if (!EMAIL_RE.test(to)) fail(400, 'email', 'נא להזין מייל ארגוני בסיומת \u2066@' + EMAIL_DOMAIN + '.\u2069');
   if (to === u.email) fail(400, 'self', 'אי אפשר להעביר את המקום לעצמך.');
   if (!u.profile_done) fail(403, 'no_profile', 'יש להשלים הרשמה.');
   const rows = (await env.DB.prepare('SELECT * FROM bookings WHERE gid = ?').bind(String(b.gid || '')).all()).results;
@@ -381,7 +381,7 @@ async function allowAdd(c) {
     if (EMAIL_RE.test(e)) seen.add(e); else if (bad.length < 5) bad.push(e.slice(0, 60));
   }
   const emails = [...seen];
-  if (!emails.length) fail(400, 'empty', 'לא נמצאו כתובות מייל תקינות בסיומת \u2066@' + EMAIL_DOMAIN + '\u2069' + '.');
+  if (!emails.length) fail(400, 'empty', 'לא נמצאו כתובות מייל תקינות בסיומת \u2066@' + EMAIL_DOMAIN + '.\u2069');
   if (emails.length > 1500) fail(400, 'big', 'אפשר להוסיף עד 1500 כתובות בכל פעם.');
   await env.DB.prepare(ALLOW_DDL).run();
   const now = Date.now(), by = a.name || a.email;

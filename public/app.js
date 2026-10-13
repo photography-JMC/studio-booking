@@ -151,7 +151,7 @@
     var g=groups(S.mine).filter(function(x){return x.gid===gid&&x.uid===S.uid})[0];
     if(!g||!S.profile)return;
     var em=String(S.tfEmail||'').trim().toLowerCase();
-    if(!EMAIL_RE.test(em)){S.tfErr='נא להזין מייל ארגוני בסיומת \u2066@'+EMAIL_DOMAIN+'\u2069'+'.';return renderList()}
+    if(!EMAIL_RE.test(em)){S.tfErr='נא להזין מייל ארגוני בסיומת \u2066@'+EMAIL_DOMAIN+'.\u2069';return renderList()}
     if(em===myEmail()){S.tfErr='אי אפשר להעביר את המקום לעצמך.';return renderList()}
     try{
       await api('POST','/api/transfers',{gid:gid,toEmail:em});
@@ -738,7 +738,7 @@
     var r=S.reg,edit=!!S.profile;
     return '<div class="card reg"><div>'+
       '<h2>'+(edit?'עריכת פרטים אישיים':'ברוכים הבאים, נרשמים לפני ההזמנה הראשונה')+'</h2>'+
-      '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת \u2066@'+EMAIL_DOMAIN+'\u2069'+'. הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
+      '<p>'+(edit?'הפרטים נשמרים באזור האישי שלך בלבד.':'ההרשמה פתוחה לסטודנטים עם מייל ארגוני בסיומת \u2066@'+EMAIL_DOMAIN+'.\u2069'+' הפרטים נשמרים באזור האישי שלך ומשמשים למילוי אוטומטי של כל הזמנה.')+'</p></div>'+
       '<div class="photo-row">'+avatarHTML({photo:r.photo,name:r.name},'xl')+'<div class="photo-btns"><button type="button" class="btn ghost" data-act="photo-pick">'+(r.photo?'החלפת תמונה':'העלאת תמונת פרופיל')+'</button>'+(r.photo?'<button type="button" class="btn ghost" data-act="photo-remove">הסרה</button>':'')+'<input type="file" id="r-photo" accept="image/*" data-photo="1" hidden><span class="lbl" style="flex-basis:100%">אפשר גם בלי תמונה. התמונה מוצגת רק לך.</span></div></div>'+
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
@@ -782,7 +782,7 @@
     document.body.classList.add("lg");
     $('#tabs').innerHTML='';$('#who').innerHTML='';$('#notice').innerHTML='';
     var L=S.login||(S.login={busy:false,err:''});
-    $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם חשבון Google של המכללה, בסיומת \u2066@'+EMAIL_DOMAIN+'\u2069'+'.</p></div>'+
+    $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם חשבון Google של המכללה, בסיומת \u2066@'+EMAIL_DOMAIN+'.\u2069'+'</p></div>'+
       (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
       (L.busy?'<p class="lbl">מתחבר…</p>':'<div id="g-btn" style="min-height:44px"></div>')+'</div>';
     if(!L.busy)mountGoogle();
