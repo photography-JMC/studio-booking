@@ -714,15 +714,20 @@
     stInit();var my=++stSeq;S.st.busy=true;S.st.err='';stRes();
     return api('GET','/api/admin/stats'+stQuery(false)).then(function(r){if(my!==stSeq)return;S.st.data=r;S.st.busy=false;stRes()},function(e){if(my!==stSeq)return;S.st.busy=false;S.st.err=e.message||'שגיאה';stRes()});
   }
+  function stPeopleOpts(q){
+    var list=Object.keys(S.members||{}).map(function(k){return S.members[k]}).filter(function(m){return m&&m.name&&m.status!=='removed'}).sort(function(a,b){return String(a.name).localeCompare(String(b.name),'he')});
+    return list.map(function(m){return '<option value="'+esc(m.email)+'"'+(q&&q.toLowerCase()===String(m.email).toLowerCase()?' selected':'')+'>'+esc(m.name)+'</option>'}).join('');
+  }
   function renderStats(){
     stInit();var s=S.st;
     var h='<div class="admin"><h3>סטטיסטיקה: כמה כל אחד היה פעיל באולפנים</h3><div class="card" style="display:flex;flex-direction:column;gap:12px;padding:16px">'+
       '<p class="tfnote" style="margin:0">הנתונים כוללים הזמנות שהתקיימו (עד התאריך שנבחר, ברירת מחדל: היום). המזמין והמשתתפים שנבחרו איתו נספרים. ניקוי סוף שנה מוחק את הנתונים, לכן יש להוריד אקסל לפני כן.</p>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-q">חיפוש לפי שם או מייל</label><input id="st-q" placeholder="חיפוש" value="'+esc(s.q)+'"></div>'+
-      '<div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
-      '<div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div></div>'+
-      '<div class="row2"><div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div><div></div></div>'+
+      '<div class="field"><label class="lbl" for="st-person">בחירת אדם מהרשימה</label><select id="st-person"><option value="">כל הרשומים</option>'+stPeopleOpts(s.q)+'</select></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
+      '<div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div>'+
+      '<div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div></div>'+
       '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn ghost" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
       '</div><div id="st-res"></div></div>';
     $('#main').innerHTML=h;
@@ -1107,7 +1112,8 @@
     if(t.id==='f-part'){if(e.type==='change'&&t.value==='__solo'){S.form.part=[];S.form.people=1;S.form.solo=true;renderSide();return}
       if(e.type==='change'&&t.value){S.form.solo=false;var o=(S.dir||[]).filter(function(x){return x.uid===t.value})[0];if(o){S.form.part=(S.form.part||[]).concat([{uid:o.uid,name:o.name}]);var pc=parseInt(S.form.people,10)||1;if(pc<S.form.part.length+1)S.form.people=S.form.part.length+1;renderSide()}}return}
     if(t.id&&t.id.indexOf('st-')===0&&t.id!=='st-res'){stInit();var sk=t.id.slice(3);
-      if(sk==='q'){S.st.q=t.value;if(e.type==='input'){clearTimeout(stTimer);stTimer=setTimeout(stLoad,350)}}
+      if(sk==='person'){if(e.type==='change'){S.st.q=t.value;var qi=$('#st-q');if(qi)qi.value=t.value;stLoad()}}
+      else if(sk==='q'){S.st.q=t.value;var ps=$('#st-person');if(ps&&e.type==='input'&&ps.value&&ps.value.toLowerCase()!==String(t.value).toLowerCase())ps.value='';if(e.type==='input'){clearTimeout(stTimer);stTimer=setTimeout(stLoad,350)}}
       else if(e.type==='change'){S.st[sk]=t.value;stLoad()}
       return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
