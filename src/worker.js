@@ -205,6 +205,7 @@ async function getState(c) {
   const { env, url } = c;
   const u = await needUser(c);
   const admin = isAdmin(u);
+  const listed = admin ? null : await allowEntry(env, u.email);
   const ver = (await env.DB.prepare("SELECT v FROM meta WHERE k = 'ver'").first()).v;
   const since = url.searchParams.get('v');
   if (since !== null && Number(since) === ver) return json({ unchanged: true, v: ver });
@@ -233,7 +234,7 @@ async function getState(c) {
   const members = {}; for (const r of out[5].results) members[r.id] = { uid: r.id, name: r.name, email: r.email, role: r.role, status: r.status, createdAt: r.created_at };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
-  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : u.name, listRole: admin ? '' : (await allowRole(env, u.email)) || '' }, profile, member, bookings, mine, noshows, releases, transfers, members });
+  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '' }, profile, member, bookings, mine, noshows, releases, transfers, members });
 }
 
 /* ---------- הזמנות ---------- */
@@ -362,19 +363,25 @@ async function answerTransfer(c, gid, action) {
 
 /* ---------- רשימת אישור אוטומטי ----------
    מי שהמייל שלו ברשימה מאושר מיד בהרשמה. מי שלא ברשימה ממתין לאישור ידני. הטבלה נוצרת בעת הצורך. */
-const ALLOW_DDL = "CREATE TABLE IF NOT EXISTS allowlist (email TEXT PRIMARY KEY, added_at INTEGER NOT NULL, added_by TEXT, role TEXT NOT NULL DEFAULT 'סטודנט')";
+const ALLOW_DDL = "CREATE TABLE IF NOT EXISTS allowlist (email TEXT PRIMARY KEY, added_at INTEGER NOT NULL, added_by TEXT, role TEXT NOT NULL DEFAULT 'סטודנט', name TEXT NOT NULL DEFAULT '')";
 async function ensureAllow(env) {
   await env.DB.prepare(ALLOW_DDL).run();
   try { await env.DB.prepare("ALTER TABLE allowlist ADD COLUMN role TEXT NOT NULL DEFAULT 'סטודנט'").run(); } catch (e) { /* העמודה כבר קיימת */ }
+  try { await env.DB.prepare("ALTER TABLE allowlist ADD COLUMN name TEXT NOT NULL DEFAULT ''").run(); } catch (e) { /* העמודה כבר קיימת */ }
 }
-// מחזיר את התפקיד שנקבע ברשימה, או null אם המייל לא ברשימה
-async function allowRole(env, email) {
+// מחזיר {role, name} לפי הרשימה, או null אם המייל לא ברשימה
+async function allowEntry(env, email) {
   const em = String(email).toLowerCase();
-  try { const r = await env.DB.prepare('SELECT role FROM allowlist WHERE email = ?').bind(em).first(); return r ? (YEARS.includes(r.role) ? r.role : 'סטודנט') : null; }
+  const fix = (r) => ({ role: YEARS.includes(r.role) ? r.role : 'סטודנט', name: r.name || '' });
+  try { const r = await env.DB.prepare('SELECT role, name FROM allowlist WHERE email = ?').bind(em).first(); return r ? fix(r) : null; }
   catch (e) {
-    try { return (await env.DB.prepare('SELECT 1 AS x FROM allowlist WHERE email = ?').bind(em).first()) ? 'סטודנט' : null; } catch (e2) { return null; }
+    try { const r = await env.DB.prepare('SELECT role FROM allowlist WHERE email = ?').bind(em).first(); return r ? fix(r) : null; }
+    catch (e2) {
+      try { return (await env.DB.prepare('SELECT 1 AS x FROM allowlist WHERE email = ?').bind(em).first()) ? fix({}) : null; } catch (e3) { return null; }
+    }
   }
 }
+const allowRole = async (env, email) => { const r = await allowEntry(env, email); return r ? r.role : null; };
 async function allowCount(c) {
   await needAdmin(c);
   try {
@@ -393,11 +400,18 @@ async function allowAdd(c) {
   const text = String(body.text || '');
   const role = YEARS.includes(body.role) ? body.role : 'סטודנט';
   if (text.length > 200000) fail(400, 'big', 'הרשימה ארוכה מדי.');
-  const seen = new Set(), bad = [];
-  for (const raw of text.split(/[\s,;]+/)) {
-    const e = raw.trim().toLowerCase().replace(/^<|>$/g, '');
-    if (!e) continue;
-    if (EMAIL_RE.test(e)) seen.add(e); else if (bad.length < 5) bad.push(e.slice(0, 60));
+  const seen = new Set(), bad = [], names = new Map();
+  const note = (x) => { if (bad.length < 5) bad.push(String(x).slice(0, 60)); };
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const toks = line.match(/[^\s,;<>"'|]+@[^\s,;<>"'|]+/g) || [];
+    if (!toks.length) { note(line.trim()); continue; }
+    const ems = toks.map((x) => x.trim().toLowerCase().replace(/\.+$/, ''));
+    for (const e of ems) { if (EMAIL_RE.test(e)) seen.add(e); else note(e); }
+    if (toks.length === 1 && EMAIL_RE.test(ems[0])) { // שורה עם מייל אחד: שאר השורה הוא השם המלא
+      const nm = line.replace(toks[0], ' ').replace(/[\t,;<>"'|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (nm) names.set(ems[0], nm);
+    }
   }
   const emails = [...seen];
   if (!emails.length) fail(400, 'empty', 'לא נמצאו כתובות מייל תקינות בסיומת \u2066@' + EMAIL_DOMAIN + '.\u2069');
@@ -405,7 +419,7 @@ async function allowAdd(c) {
   await ensureAllow(env);
   const now = Date.now(), by = a.name || a.email;
   for (let i = 0; i < emails.length; i += 100) {
-    await env.DB.batch(emails.slice(i, i + 100).map((e) => env.DB.prepare('INSERT INTO allowlist (email,added_at,added_by,role) VALUES (?,?,?,?) ON CONFLICT(email) DO UPDATE SET role = excluded.role').bind(e, now, by, role)));
+    await env.DB.batch(emails.slice(i, i + 100).map((e) => env.DB.prepare("INSERT INTO allowlist (email,added_at,added_by,role,name) VALUES (?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET role = excluded.role, name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE allowlist.name END").bind(e, now, by, role, names.get(e) || '')));
   }
   // מי שכבר רשום: התפקיד מתעדכן לפי הרשימה (מנהלי מערכת לא משתנים)
   const today = israelNow().date;
@@ -425,8 +439,9 @@ async function allowAdd(c) {
 async function allowList(c) {
   await needAdmin(c);
   try {
-    const r = await c.env.DB.prepare('SELECT a.email AS email, a.role AS role, u.name AS name, u.status AS status, u.profile_done AS done FROM allowlist a LEFT JOIN users u ON u.email = a.email ORDER BY a.email LIMIT 3000').all();
-    return json({ items: r.results.map((x) => ({ email: x.email, role: x.role, name: x.done ? x.name : '', status: x.done ? x.status : '' })) });
+    await ensureAllow(c.env);
+    const r = await c.env.DB.prepare('SELECT a.email AS email, a.role AS role, a.name AS lname, u.name AS name, u.status AS status, u.profile_done AS done FROM allowlist a LEFT JOIN users u ON u.email = a.email ORDER BY a.email LIMIT 3000').all();
+    return json({ items: r.results.map((x) => ({ email: x.email, role: x.role, name: (x.done && x.name) || x.lname || '', status: x.done ? x.status : '' })) });
   } catch (e) { return json({ items: [] }); }
 }
 async function allowSetRole(c) {

@@ -563,7 +563,7 @@
     var by=S.alBy||{},bl=Object.keys(by).map(function(r){return roleChip(r)+' '+by[r]}).join(' · ');
     if(bl)h+='<p style="margin:0">'+bl+'</p>';
     h+='<div class="field"><label class="lbl" for="al-role">תפקיד לכתובות שמודבקות עכשיו (קובע גם את הצבע שלהם במפה)</label><select id="al-role" data-t="alRole">'+YEARS.map(function(y){return '<option'+((S.alRole||'סטודנט')===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>';
-    h+='<div class="field"><label class="lbl" for="al-text">הדביקו כתובות מייל (אחת בכל שורה, או מופרדות ברווח או בפסיק)</label><textarea id="al-text" data-t="alText" dir="ltr" rows="5" placeholder="name@edu.jmc.ac.il">'+esc(S.alText||'')+'</textarea></div>';
+    h+='<div class="field"><label class="lbl" for="al-text">הדביקו שורה לכל אדם: שם מלא ומייל (למשל: דנה כהן dana@edu.jmc.ac.il). אפשר גם מייל בלבד</label><textarea id="al-text" data-t="alText" dir="ltr" rows="5" placeholder="שם מלא   name@edu.jmc.ac.il">'+esc(S.alText||'')+'</textarea></div>';
     if(S.alMsg)h+='<p style="margin:0" role="status"><b>'+esc(S.alMsg)+'</b></p>';
     h+='<div class="acts"><button class="btn" data-act="al-add"'+(S.alWork?' disabled':'')+'>הוספה לרשימה</button><button class="btn ghost" data-act="al-show" aria-expanded="'+(!!S.alShow)+'">'+(S.alShow?'הסתרת רשימת האנשים':'הצגת רשימת האנשים')+'</button>';
     if(S.alClear)h+='<button class="btn danger" data-act="al-clear-yes">כן, לנקות את הרשימה</button><button class="btn ghost" data-act="al-clear-no">ביטול</button>';
@@ -581,7 +581,7 @@
     var cap=it.length>300;
     return '<p class="tfnote" style="margin:0 0 6px">מוצגים '+Math.min(it.length,300)+' מתוך '+it.length+(cap?' (צמצמו בחיפוש)':'')+'</p><div class="list" style="max-height:420px;overflow:auto">'+it.slice(0,300).map(function(x){
       var ask=S.alDel===x.email;
-      return '<div class="card item"><div><h3 dir="ltr" style="text-align:right">'+esc(x.email)+'</h3><p>'+(x.name?esc(x.name)+' · ':'')+(x.status?(x.status==='approved'?'רשום/ה ומאושר/ת':x.status==='pending'?'רשום/ה וממתין/ה':x.status==='rejected'?'נדחה':'הוסר/ה'):'עוד לא נרשם/ה')+'</p></div><div class="acts">'+
+      return '<div class="card item"><div><h3>'+(x.name?esc(x.name):'(בלי שם)')+'</h3><p><bdi dir="ltr">'+esc(x.email)+'</bdi> · '+(x.status?(x.status==='approved'?'רשום/ה ומאושר/ת':x.status==='pending'?'רשום/ה וממתין/ה':x.status==='rejected'?'נדחה':'הוסר/ה'):'עוד לא נרשם/ה')+'</p></div><div class="acts">'+
         '<select class="al-rolesel" data-em="'+esc(x.email)+'" aria-label="תפקיד">'+YEARS.map(function(y){return '<option'+(x.role===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select>'+
         (ask?'<button class="btn danger" data-act="al-del-yes" data-em="'+esc(x.email)+'">כן, להסיר</button><button class="btn ghost" data-act="al-del-no">ביטול</button>':'<button class="btn ghost" data-act="al-del" data-em="'+esc(x.email)+'">הסרה</button>')+'</div></div>'}).join('')+'</div>';
   }
