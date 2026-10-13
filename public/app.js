@@ -714,6 +714,15 @@
     stInit();var my=++stSeq;S.st.busy=true;S.st.err='';stRes();
     return api('GET','/api/admin/stats'+stQuery(false)).then(function(r){if(my!==stSeq)return;S.st.data=r;S.st.busy=false;stRes()},function(e){if(my!==stSeq)return;S.st.busy=false;S.st.err=e.message||'שגיאה';stRes()});
   }
+  /* תקופות: כל השנה = מתחילת סמסטר א' ועד סוף התקופה האחרונה; הנתונים נספרים רק עד היום */
+  function stPeriod(k){
+    var P=PERIODS,today=ds(new Date()),r=null;
+    if(k==='year')r=[P[0][0],P[P.length-1][1]];
+    else if(k==='sem1')r=P[0];
+    else if(k==='sem2')r=P[1];
+    if(!r)return null;
+    return [r[0],r[1]<today?r[1]:today];
+  }
   function stPeopleOpts(q){
     var list=Object.keys(S.members||{}).map(function(k){return S.members[k]}).filter(function(m){return m&&m.name&&m.status!=='removed'}).sort(function(a,b){return String(a.name).localeCompare(String(b.name),'he')});
     return list.map(function(m){return '<option value="'+esc(m.email)+'"'+(q&&q.toLowerCase()===String(m.email).toLowerCase()?' selected':'')+'>'+esc(m.name)+'</option>'}).join('');
@@ -726,6 +735,7 @@
       '<div class="field"><label class="lbl" for="st-person">בחירת אדם מהרשימה</label><select id="st-person"><option value="">כל הרשומים</option>'+stPeopleOpts(s.q)+'</select></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
+      '<div class="field"><label class="lbl" for="st-period">תקופה</label><select id="st-period"><option value=""'+(s.period?'':' selected')+'>כל התקופה / תאריכים לבחירה</option><option value="year"'+(s.period==='year'?' selected':'')+'>כל השנה</option><option value="sem1"'+(s.period==='sem1'?' selected':'')+'>סמסטר א\'</option><option value="sem2"'+(s.period==='sem2'?' selected':'')+'>סמסטר ב\'</option></select></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div>'+
       '<div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div></div>'+
       '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn ghost" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
@@ -763,7 +773,7 @@
       r.purposes.forEach(function(x){pur.push([x.purpose,x.bookings,x.hours,x.personHours,x.people])});
       var det=[['תאריך','משעה','עד שעה','עמדות','שם המזמין','מייל','תפקיד','סוג פעילות','משתתפים','שמות המשתתפים','לא הגיע','הערות']];
       (r.detail||[]).forEach(function(o){det.push([dmy(o.date),hh(o.lo),hh(o.hi),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.with||'',o.noshow?'כן':'',o.notes||''])});
-      var info=[['פרמטר','ערך'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
+      var info=[['פרמטר','ערך'],['תקופה',({year:'כל השנה',sem1:'סמסטר א\'',sem2:'סמסטר ב\''})[S.st.period]||'תאריכים לבחירה'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
       var blob=buildXlsx([{name:'לפי אנשים',rows:ppl},{name:'לפי סוג פעילות',rows:pur},{name:'הזמנות מפורטות',rows:det},{name:'פרטי הסינון',rows:info}]);
       var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='studio-stats-'+ds(new Date())+'.xlsx';document.body.appendChild(a);a.click();
       setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
@@ -1114,7 +1124,8 @@
     if(t.id&&t.id.indexOf('st-')===0&&t.id!=='st-res'){stInit();var sk=t.id.slice(3);
       if(sk==='person'){if(e.type==='change'){S.st.q=t.value;var qi=$('#st-q');if(qi)qi.value=t.value;stLoad()}}
       else if(sk==='q'){S.st.q=t.value;var ps=$('#st-person');if(ps&&e.type==='input'&&ps.value&&ps.value.toLowerCase()!==String(t.value).toLowerCase())ps.value='';if(e.type==='input'){clearTimeout(stTimer);stTimer=setTimeout(stLoad,350)}}
-      else if(e.type==='change'){S.st[sk]=t.value;stLoad()}
+      else if(sk==='period'){if(e.type==='change'){S.st.period=t.value;var pr=stPeriod(t.value);if(pr){S.st.from=pr[0];S.st.to=pr[1]}else{S.st.from='';S.st.to=''}renderStats();stLoad()}}
+      else if(e.type==='change'){S.st[sk]=t.value;if(sk==='from'||sk==='to')S.st.period='';stLoad();if(sk==='from'||sk==='to'){var pe=$('#st-period');if(pe)pe.value=''}}
       return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
