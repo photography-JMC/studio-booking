@@ -30,10 +30,10 @@ function secure(res, api) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) {
-      try { return secure(await handleApi(request, env, url), true); }
+      try { return secure(await handleApi(request, env, url, ctx), true); }
       catch (e) {
         if (e instanceof HttpError) return secure(json({ error: e.code, message: e.message }, e.status), true);
         console.error('api error', e && e.stack || e);
@@ -104,10 +104,25 @@ const groupOf = (rows) => {
 const keyOf = (r) => `${r.studio}_${r.date}_${String(r.hour).padStart(2, '0')}`;
 const distinctHours = (rows) => new Set(rows.map((r) => r.hour)).size;
 
+/* ---------- התראות למנהלת (אופציונלי) ----------
+   אם הוגדרו NOTIFY_URL ו-NOTIFY_SECRET, נשלחת הודעה לסקריפט Google שמעביר אותה במייל.
+   השליחה ברקע ואינה מעכבת או מפילה את הפעולה. בלי ההגדרות לא קורה כלום. */
+const oneLine = (t) => String(t == null ? '' : t).replace(/[\r\n]+/g, ' ').slice(0, 120);
+function notify(c, subject, text) {
+  const { env, ctx } = c;
+  if (!env.NOTIFY_URL || !env.NOTIFY_SECRET || !ctx) return;
+  const p = fetch(env.NOTIFY_URL, {
+    method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ secret: env.NOTIFY_SECRET, subject: oneLine(subject), text: String(text).slice(0, 1500) }),
+    redirect: 'follow',
+  }).catch((e) => console.error('notify failed', e && e.message));
+  ctx.waitUntil(p);
+}
+
 /* ---------- ניתוב ---------- */
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, ctx) {
   const method = request.method, path = url.pathname;
-  const c = { request, env, url };
+  const c = { request, env, url, ctx };
   if (method !== 'GET' && method !== 'HEAD') {
     const origin = request.headers.get('origin');
     if (origin && origin !== url.origin) fail(403, 'origin', 'בקשה לא מורשית.');
@@ -255,6 +270,12 @@ async function createBooking(c) {
     await env.DB.batch([env.DB.prepare('DELETE FROM bookings WHERE gid = ?').bind(gid), bump(env)]);
     fail(409, 'quota', `ההזמנה חורגת ממכסה של ${RULES.MAX_DAY} שעות ליום.`);
   }
+  if (!isAdmin(u)) {
+    const names = ids.map((i) => STUDIOS.find((s) => s.id === i).name).join(', ');
+    const [yy, mm, dd] = b.date.split('-');
+    notify(c, `הזמנת אולפן חדשה: ${oneLine(u.name)}`,
+      `${oneLine(u.name)} (${oneLine(u.role)}) הזמין/ה אולפן\n${names}\nתאריך: ${dd}/${mm}/${yy}\nשעות: ${String(start).padStart(2, '0')}:00–${String(start + dur).padStart(2, '0')}:00\nמטרה: ${oneLine(b.purpose)}, ${people} משתתפים\n\nhttps://studio-booking.photography-e89.workers.dev`);
+  }
   return json({ ok: true, gid });
 }
 
@@ -354,6 +375,8 @@ async function saveProfile(c) {
   ];
   if (first) st.push(audit(env, u, 'register', u.email));
   await env.DB.batch(st);
+  if (first && !isAdmin(u)) notify(c, `נרשם/ה חדש/ה ממתין/ה לאישור: ${oneLine(name)}`,
+    `${oneLine(name)} (${oneLine(b.year)}) נרשם/ה למערכת הזמנת האולפנים וממתין/ה לאישור.\n\nלאישור: לשונית "ניהול" באתר\nhttps://studio-booking.photography-e89.workers.dev`);
   return json({ ok: true });
 }
 async function deleteProfile(c) {
