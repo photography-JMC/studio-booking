@@ -244,3 +244,7 @@ textarea{resize:vertical;min-height:64px}
   .roleidx b{flex:1 1 100%}
 }
 body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10px;width:fit-content;max-width:calc(100% - 24px);margin:36px auto 0}
+:root{--al-ok:#15803D;--al-no:#DC2626}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--al-ok:#4ADE80;--al-no:#F87171}}
+:root[data-theme="dark"]{--al-ok:#4ADE80;--al-no:#F87171}
+.card h3.al-ok{color:var(--al-ok)}.card h3.al-no{color:var(--al-no)}
