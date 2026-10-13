@@ -1,4 +1,4 @@
-import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE } from './config.js';
+import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE } from './config.js';
 import { json, HttpError, fail, randomHex, israelNow, validDate, addDays, absMin, nowAbs, epochOf, blockedReason, closeOf, isAdminEmail, rateLimit, sha256Hex } from './util.js';
 import { verifyGoogleToken, newSessionToken, hashToken, cookieHeader, readCookie, SESSION_MS } from './auth.js';
 
@@ -48,6 +48,13 @@ export default {
 
 /* ניקוי יומי: התחברויות שפגו, מונה קצב, חשבונות שלא השלימו הרשמה, יומן ישן */
 // טבלת המשתתפים בהזמנה נוצרת בעת הצורך (פעם אחת לכל מופע של השרת)
+// עמודת שנת הלימוד בהזמנות נוספת בעת הצורך (פעם אחת לכל מופע של השרת)
+let YEAR_READY = false;
+async function ensureYear(env) {
+  if (YEAR_READY) return;
+  try { await env.DB.prepare("ALTER TABLE bookings ADD COLUMN study_year TEXT NOT NULL DEFAULT ''").run(); } catch (e) { /* העמודה כבר קיימת */ }
+  YEAR_READY = true;
+}
 let PEOPLE_READY = false;
 async function ensurePeople(env) {
   if (PEOPLE_READY) return;
@@ -173,7 +180,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, purposes: PURPOSES,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES,
   });
 }
 
@@ -239,7 +246,7 @@ async function getState(c) {
   const bk = (r) => {
     const o = { studio: r.studio, date: r.date, hour: r.hour, gid: r.gid, uid: r.user_id, name: r.name, year: r.role, purpose: r.purpose, people: r.people, createdAt: r.created_at };
     if (r.transferred_from) o.transferredFrom = r.transferred_from;
-    if (admin || r.user_id === u.id) { o.email = r.email; o.notes = r.notes; } // מייל והערות רק למזמין ולמנהלים
+    if (admin || r.user_id === u.id) { o.email = r.email; o.notes = r.notes; o.studyYear = r.study_year || ''; } // מייל והערות רק למזמין ולמנהלים
     return o;
   };
   const bookings = {}; for (const r of out[0].results) bookings[keyOf(r)] = bk(r);
@@ -284,6 +291,13 @@ async function createBooking(c) {
   const people = b.people;
   if (!Number.isInteger(people) || people < 1 || people > cap) fail(400, 'people', `מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-${cap}.`);
   const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
+  // סטודנטים חייבים לציין שנת לימוד; מתרגלים, מדריכים ומרצים לא
+  let studyYear = '';
+  if (u.role === 'סטודנט') {
+    if (!STUDY_YEARS.includes(b.studyYear)) fail(400, 'study_year', 'סטודנטים צריכים לציין שנת לימוד.');
+    studyYear = b.studyYear;
+  }
+  await ensureYear(env);
   // חובה לציין אם עובדים לבד או עם אחרים, והמספר חייב להתאים לשמות שנבחרו
   const mode = b.mode;
   if (mode !== 'solo' && mode !== 'group') fail(400, 'mode', 'יש לציין אם אתם עובדים לבד או עם אנשים נוספים. אם הדף פתוח כבר זמן רב, רעננו אותו.');
@@ -304,8 +318,8 @@ async function createBooking(c) {
   if (hrs.size > RULES.MAX_DAY) fail(400, 'quota', `ההזמנה חורגת ממכסה של ${RULES.MAX_DAY} שעות ליום.`);
   const gid = randomHex(8), now = Date.now(), stmts = [];
   for (let i = 0; i < dur; i++) for (const s of ids)
-    stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, b.purpose, people, notes, now));
+    stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, b.purpose, people, notes, now, studyYear));
   for (const pu of part) stmts.push(env.DB.prepare('INSERT OR IGNORE INTO booking_people (gid, uid) VALUES (?,?)').bind(gid, pu));
   stmts.push(bump(env));
   try { await env.DB.batch(stmts); } // כל ההזמנה נשמרת יחד או לא נשמרת בכלל
@@ -652,9 +666,10 @@ async function exportData(c) {
   const { env } = c;
   const a = await needAdmin(c);
   await ensurePeople(env);
+  await ensureYear(env);
   const out = await env.DB.batch([
     env.DB.prepare('SELECT name,email,role,status,created_at FROM users WHERE profile_done = 1 ORDER BY name'),
-    env.DB.prepare("SELECT b.gid AS gid,b.date AS date,MIN(b.hour) AS lo,MAX(b.hour) AS hi,group_concat(DISTINCT b.studio) AS st,b.name AS name,b.email AS email,b.role AS role,b.purpose AS purpose,b.people AS people,b.notes AS notes,(SELECT group_concat(u.name, ', ') FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid = b.gid) AS withp FROM bookings b GROUP BY b.gid ORDER BY b.date, lo"),
+    env.DB.prepare("SELECT b.gid AS gid,b.date AS date,MIN(b.hour) AS lo,MAX(b.hour) AS hi,group_concat(DISTINCT b.studio) AS st,b.name AS name,b.email AS email,b.role AS role,b.purpose AS purpose,b.people AS people,b.notes AS notes,b.study_year AS sy,(SELECT group_concat(u.name, ', ') FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid = b.gid) AS withp FROM bookings b GROUP BY b.gid ORDER BY b.date, lo"),
     env.DB.prepare('SELECT name,email,end_at FROM noshows ORDER BY end_at'),
     audit(env, a, 'export', ''),
   ]);
@@ -665,6 +680,7 @@ async function statsData(c) {
   const { env, url } = c;
   await needAdmin(c);
   await ensurePeople(env);
+  await ensureYear(env);
   const sp = url.searchParams, today = israelNow().date;
   const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 60);
   const purpose = PURPOSES.includes(sp.get('purpose')) ? sp.get('purpose') : '';
@@ -673,7 +689,7 @@ async function statsData(c) {
   const to = validDate(sp.get('to') || '') ? sp.get('to') : today; // ברירת מחדל: עד היום, בלי הזמנות עתידיות
   const detail = sp.get('detail') === '1';
   const out = await env.DB.batch([
-    env.DB.prepare(`SELECT b.gid AS gid, b.date AS date, b.user_id AS uid, b.purpose AS purpose, b.people AS people, b.notes AS notes,
+    env.DB.prepare(`SELECT b.gid AS gid, b.date AS date, b.user_id AS uid, b.purpose AS purpose, b.people AS people, b.notes AS notes, b.study_year AS sy,
         MIN(b.hour) AS lo, MAX(b.hour) + 1 AS hi, group_concat(DISTINCT b.studio) AS st,
         COALESCE(NULLIF(u.name, ''), b.name) AS name, COALESCE(u.email, b.email) AS email, COALESCE(NULLIF(u.role, ''), b.role) AS role
       FROM bookings b LEFT JOIN users u ON u.id = b.user_id
@@ -711,7 +727,7 @@ async function statsData(c) {
     }
     if (detail && detailRows.length < 20000) detailRows.push({
       date: g.date, lo: g.lo, hi: g.hi, st: g.st, name: g.name, email: g.email, role: g.role, purpose: g.purpose, people: g.people,
-      with: ps.map((x) => x.name).join(', '), noshow: noshow.has(g.gid), notes: g.notes,
+      sy: g.sy || '', with: ps.map((x) => x.name).join(', '), noshow: noshow.has(g.gid), notes: g.notes,
     });
   }
   const peopleOut = [...people.values()].map((p) => ({

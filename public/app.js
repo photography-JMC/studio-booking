@@ -13,7 +13,7 @@
   var ADMINS=CFG.admins, PERIODS=CFG.periods, CLOSED_RANGES=CFG.closed, SHORT_DAYS=CFG.shortDays;
   var EMAIL_DOMAIN=CFG.domain;
   var EMAIL_RE=/^[a-z0-9._%+\-]+@edu\.jmc\.ac\.il$/;
-  var YEARS=CFG.years, PURPOSES=CFG.purposes;
+  var YEARS=CFG.years, PURPOSES=CFG.purposes, STUDY_YEARS=CFG.studyYears||[];
 
   /* ===== Helpers ===== */
   var $=function(s){return document.querySelector(s)};
@@ -116,7 +116,7 @@
     ver:0,polls:0,loaded:false,flash:'',bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,confirmRemove:null,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
     reg:{name:'',year:'',email:'',agree:false},
-    form:{purpose:'',people:1,notes:'',part:[]}
+    form:{purpose:'',people:1,notes:'',part:[],studyYear:''}
   };
   function needReg(){return S.ready&&S.db&&S.uid&&S.profileLoaded&&(!S.profile||S.editing)}
 
@@ -267,7 +267,7 @@
     var g={},k;src=src||S.bookings;
     for(k in src){
       var b=src[k];
-      var x=g[b.gid]||(g[b.gid]={gid:b.gid,studios:[],date:b.date,from:99,to:0,uid:b.uid,name:b.name,purpose:b.purpose,people:b.people,notes:b.notes,keys:[]});
+      var x=g[b.gid]||(g[b.gid]={gid:b.gid,studios:[],date:b.date,from:99,to:0,uid:b.uid,name:b.name,purpose:b.purpose,people:b.people,notes:b.notes,studyYear:b.studyYear||'',keys:[]});
       x.from=Math.min(x.from,b.hour); x.to=Math.max(x.to,b.hour+1); x.keys.push(k);
       if(x.studios.indexOf(b.studio)<0)x.studios.push(b.studio);
     }
@@ -401,6 +401,18 @@
     }
     return html;
   }
+  /* שנת לימוד: חובה לסטודנטים בלבד */
+  function needsYear(){return !!(S.profile&&S.profile.year==='סטודנט')}
+  function yearMsg(){return needsYear()&&STUDY_YEARS.indexOf(S.form.studyYear)<0?'נא לבחור שנת לימוד.':''}
+  function lastStudyYear(){
+    var best=null,k;for(k in S.mine){var b=S.mine[k];if(b&&b.studyYear&&(!best||b.createdAt>best.createdAt))best=b}
+    return best?best.studyYear:'';
+  }
+  function yearHTML(){
+    if(!needsYear())return '';
+    var f=S.form;
+    return '<div class="field"><label class="lbl" for="f-year">שנת לימוד (חובה)</label><select id="f-year" data-f="studyYear"><option value="">בחירה</option>'+STUDY_YEARS.map(function(y){return '<option'+(f.studyYear===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>';
+  }
   function partHTML(cap){
     var f=S.form,part=f.part||[];
     if(!S.dir&&!S.dirBusy){S.dirBusy=true;api('GET','/api/people').then(function(r){S.dir=r.items||[];S.dirAt=Date.now();S.dirBusy=false;if(S.step==='form')renderSide()},function(){S.dir=[];S.dirBusy=false})}
@@ -436,12 +448,13 @@
       '<div class="sum"><b>'+sel.map(function(t){return esc(t.name)}).join('<br>')+'</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
       (S.profile?'<div class="sum"><span class="lbl">מזמין/ה</span><b>'+esc(S.profile.name)+'</b></div>':'')+
       '<div class="field"><label class="lbl" for="f-purpose">מטרת השימוש</label><select id="f-purpose" data-f="purpose"><option value="">בחירה</option>'+PURPOSES.map(function(y){return '<option'+(f.purpose===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
+      yearHTML()+
       '<div class="field"><label class="lbl" for="f-people">מספר משתתפים (עד '+cap+')</label><input id="f-people" type="number" min="1" max="'+cap+'" value="'+esc(f.people)+'" data-f="people"></div>'+
       partHTML(cap)+
       '<div class="field"><label class="lbl" for="f-notes">ציוד או הערות לצוות</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       '<p class="pledge">סטודנטים יקרים, הזמנתכם מחייבת, באם אינכם יכולים להגיע, נא לבטל את הזמנת האולפן במועד המוקדם ביותר האפשרי, במידה ואי הגעה למרות ההזמנה תחזור על עצמה, המערכת לא תאפשר לכם להזמין שוב.</p>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
-      '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid||partMsg()?' disabled':'')+'>'+(S.busy?'שומר…':'אישור הזמנה')+'</button>'+
+      '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid||partMsg()||yearMsg()?' disabled':'')+'>'+(S.busy?'שומר…':'אישור הזמנה')+'</button>'+
       '<button class="btn ghost" data-act="back">חזרה לשעות</button>';
   }
   function sideDone(){
@@ -575,7 +588,7 @@
       }
     }
     if(!act&&mine) act='<span class="lbl">אי אפשר לבטל פחות מ-'+(CANCEL_LEAD_H===2?'שעתיים':CANCEL_LEAD_H+' שעות')+' לפני</span>';
-    return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(S.people&&S.people[g.gid]?'<p>משתתפים: '+esc(S.people[g.gid].join(', '))+'</p>':'')+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+''+tfx+'</div><div class="acts">'+act+'</div></div>';
+    return '<div class="card item"><div><h3>'+esc(namesOf(g.studios))+' · '+rng(g.from,g.to)+'</h3><p>'+esc(fmtLong(parse(g.date)))+(all?' · '+esc(g.name||''):'')+' · '+esc(g.purpose||'')+(g.studyYear?' · '+esc(g.studyYear):'')+(g.people?' · '+esc(g.people)+' משתתפים':'')+'</p>'+(S.people&&S.people[g.gid]?'<p>משתתפים: '+esc(S.people[g.gid].join(', '))+'</p>':'')+(g.notes?'<p>'+esc(g.notes)+'</p>':'')+''+tfx+'</div><div class="acts">'+act+'</div></div>';
   }
 
   async function purgeMember(uid){
@@ -786,8 +799,8 @@
       r.people.forEach(function(x){ppl.push([x.name||'',x.email||'',x.role||'',x.bookings,x.hours,x.pBookings,x.pHours,x.total,x.noshows,x.by.map(function(b){return b[0]+' ('+b[1]+')'}).join(', ')])});
       var pur=[['סוג פעילות','הזמנות','שעות','שעות-אדם','אנשים שונים']];
       r.purposes.forEach(function(x){pur.push([x.purpose,x.bookings,x.hours,x.personHours,x.people])});
-      var det=[['תאריך','משעה','עד שעה','עמדות','שם המזמין','מייל','תפקיד','סוג פעילות','משתתפים','שמות המשתתפים','לא הגיע','הערות']];
-      (r.detail||[]).forEach(function(o){det.push([dmy(o.date),hh(o.lo),hh(o.hi),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.with||'',o.noshow?'כן':'',o.notes||''])});
+      var det=[['תאריך','משעה','עד שעה','עמדות','שם המזמין','מייל','תפקיד','שנת לימוד','סוג פעילות','משתתפים','שמות המשתתפים','לא הגיע','הערות']];
+      (r.detail||[]).forEach(function(o){det.push([dmy(o.date),hh(o.lo),hh(o.hi),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.sy||'',o.purpose||'',o.people==null?'':o.people,o.with||'',o.noshow?'כן':'',o.notes||''])});
       var info=[['פרמטר','ערך'],['תקופה',({year:'כל השנה',sem1:'סמסטר א\'',sem2:'סמסטר ב\''})[S.st.period]||'תאריכים לבחירה'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
       var blob=buildXlsx([{name:'לפי אנשים',rows:ppl},{name:'לפי סוג פעילות',rows:pur},{name:'הזמנות מפורטות',rows:det},{name:'פרטי הסינון',rows:info}]);
       var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='studio-stats-'+ds(new Date())+'.xlsx';document.body.appendChild(a);a.click();
@@ -802,8 +815,8 @@
     var tag={pending:'ממתין לאישור',approved:'מאושר',rejected:'לא אושר',removed:'הוסר'};
     var users=[['שם','מייל','תפקיד','סטטוס','תאריך הרשמה']];
     d.users.forEach(function(m){users.push([m.name||'',m.email||'',m.role||'',tag[m.status||'pending']||'',m.created_at?new Date(m.created_at).toLocaleDateString('he-IL'):''])});
-    var bookings=[['תאריך','משעה','עד שעה','עמדות','שם','מייל','תפקיד','מטרה','משתתפים','שמות המשתתפים','הערות']];
-    d.bookings.forEach(function(o){bookings.push([dmy(o.date),hh(o.lo),hh(o.hi+1),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.purpose||'',o.people==null?'':o.people,o.withp||'',o.notes||''])});
+    var bookings=[['תאריך','משעה','עד שעה','עמדות','שם','מייל','תפקיד','שנת לימוד','מטרה','משתתפים','שמות המשתתפים','הערות']];
+    d.bookings.forEach(function(o){bookings.push([dmy(o.date),hh(o.lo),hh(o.hi+1),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.sy||'',o.purpose||'',o.people==null?'':o.people,o.withp||'',o.notes||''])});
     var nos=[['שם','מייל','תאריך הזמנה']];
     d.noshows.forEach(function(x){nos.push([x.name||'',x.email||'',x.end_at?new Date(x.end_at).toLocaleDateString('he-IL'):''])});
     var blob=buildXlsx([{name:'משתמשים',rows:users},{name:'הזמנות',rows:bookings},{name:'אי-הגעות',rows:nos}]);
@@ -1013,13 +1026,14 @@
     if(isBlocked(S.uid)||!canBook())return renderSide();
     if(blockedReason(S.date)){S.err='אי אפשר להזמין בתאריך הזה ('+blockedReason(S.date)+').';return renderSide()}
     if(!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
+    if(yearMsg()){S.err=yearMsg();return renderSide()}
     if(!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
     var part=(f.part||[]),pm=partMsg();
     if(pm){S.err=pm;return renderSide()}
     if(myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group'});
+      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
       renderSide();
@@ -1118,7 +1132,7 @@
       renderSide();
       var sl=document.querySelector('.slot[data-h="'+h+'"]');if(sl)sl.focus({preventScroll:true});
     }
-    else if(a==='next'){S.step='form';S.err='';if(!S.dirAt||Date.now()-S.dirAt>120000)S.dir=null;renderSide();toSide()}
+    else if(a==='next'){S.step='form';S.err='';if(!S.dirAt||Date.now()-S.dirAt>120000)S.dir=null;if(!S.form.studyYear)S.form.studyYear=lastStudyYear();renderSide();toSide()}
     else if(a==='back'){S.step='slots';renderSide()}
     else if(a==='submit'){submit()}
     else if(a==='more'){S.step='slots';S.done=null;S.start=null;S.anchor=null;S.msg='';partial()}
@@ -1151,7 +1165,7 @@
       }
       return;
     }
-    if(d.f){S.form[d.f]=t.value;if(d.f==='people'&&e.type==='change'&&S.step==='form')renderSide()}
+    if(d.f){S.form[d.f]=t.value;if((d.f==='people'||d.f==='studyYear')&&e.type==='change'&&S.step==='form')renderSide()}
     if(d.t)S[d.t]=t.value;
     if(d.r)S.reg[d.r]=t.type==='checkbox'?t.checked:t.value;
   }

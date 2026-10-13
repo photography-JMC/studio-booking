@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   people          INTEGER NOT NULL,
   notes           TEXT NOT NULL DEFAULT '',
   created_at      INTEGER NOT NULL,
+  study_year      TEXT NOT NULL DEFAULT '',   -- שנת לימוד (לסטודנטים בלבד)
   transferred_from TEXT,
   transferred_at  INTEGER,
   UNIQUE (studio, date, hour),
