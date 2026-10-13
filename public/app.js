@@ -716,14 +716,14 @@
   }
   function renderStats(){
     stInit();var s=S.st;
-    var h='<div class="admin"><h3>סטטיסטיקה: כמה כל אחד היה פעיל באולפנים</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">'+
+    var h='<div class="admin"><h3>סטטיסטיקה: כמה כל אחד היה פעיל באולפנים</h3><div class="card" style="display:flex;flex-direction:column;gap:12px;padding:16px">'+
       '<p class="tfnote" style="margin:0">הנתונים כוללים הזמנות שהתקיימו (עד התאריך שנבחר, ברירת מחדל: היום). המזמין והמשתתפים שנבחרו איתו נספרים. ניקוי סוף שנה מוחק את הנתונים, לכן יש להוריד אקסל לפני כן.</p>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-q">חיפוש לפי שם או מייל</label><input id="st-q" placeholder="חיפוש" value="'+esc(s.q)+'"></div>'+
       '<div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div><div></div></div>'+
-      '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
+      '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn ghost" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
       '</div><div id="st-res"></div></div>';
     $('#main').innerHTML=h;
     if(!s.data&&!s.busy)stLoad();else stRes();
