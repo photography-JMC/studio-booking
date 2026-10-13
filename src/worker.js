@@ -147,6 +147,9 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'GET' && path === '/api/admin/export') res = await exportData(c);
   else if (method === 'POST' && path === '/api/admin/cleanup') res = await cleanupYear(c);
   else if (method === 'GET' && path === '/api/admin/audit') res = await auditList(c);
+  else if (method === 'GET' && path === '/api/admin/allowlist') res = await allowCount(c);
+  else if (method === 'POST' && path === '/api/admin/allowlist') res = await allowAdd(c);
+  else if (method === 'POST' && path === '/api/admin/allowlist/clear') res = await allowClear(c);
   else fail(404, 'not_found', 'לא נמצא.');
   if (c.refreshCookie) res.headers.append('Set-Cookie', cookieHeader(c.refreshCookie, SESSION_MS / 1000));
   return res;
@@ -171,7 +174,7 @@ async function loginGoogle(c) {
   if (!u) {
     const id = randomHex(16);
     await env.DB.prepare('INSERT INTO users (id,sub,email,name,status,created_at,updated_at,last_login) VALUES (?,?,?,?,?,?,?,?)')
-      .bind(id, g.sub, g.email, g.gname, isAdminEmail(g.email) ? 'approved' : 'pending', now, now, now).run();
+      .bind(id, g.sub, g.email, g.gname, (isAdminEmail(g.email) || await onAllowlist(env, g.email)) ? 'approved' : 'pending', now, now, now).run();
     u = { id, email: g.email };
   } else {
     await env.DB.prepare('UPDATE users SET sub = ?, email = ?, last_login = ? WHERE id = ?').bind(g.sub, g.email, now, u.id).run();
@@ -354,6 +357,51 @@ async function answerTransfer(c, gid, action) {
   return json({ ok: true });
 }
 
+/* ---------- רשימת אישור אוטומטי ----------
+   מי שהמייל שלו ברשימה מאושר מיד בהרשמה. מי שלא ברשימה ממתין לאישור ידני. הטבלה נוצרת בעת הצורך. */
+const ALLOW_DDL = 'CREATE TABLE IF NOT EXISTS allowlist (email TEXT PRIMARY KEY, added_at INTEGER NOT NULL, added_by TEXT)';
+async function onAllowlist(env, email) {
+  try { return !!(await env.DB.prepare('SELECT 1 FROM allowlist WHERE email = ?').bind(String(email).toLowerCase()).first()); }
+  catch (e) { return false; } // הטבלה עדיין לא קיימת
+}
+async function allowCount(c) {
+  await needAdmin(c);
+  try { return json({ count: (await c.env.DB.prepare('SELECT COUNT(*) AS n FROM allowlist').first()).n }); }
+  catch (e) { return json({ count: 0 }); }
+}
+async function allowAdd(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const text = String((await readBody(request)).text || '');
+  if (text.length > 200000) fail(400, 'big', 'הרשימה ארוכה מדי.');
+  const seen = new Set(), bad = [];
+  for (const raw of text.split(/[\s,;]+/)) {
+    const e = raw.trim().toLowerCase().replace(/^<|>$/g, '');
+    if (!e) continue;
+    if (EMAIL_RE.test(e)) seen.add(e); else if (bad.length < 5) bad.push(e.slice(0, 60));
+  }
+  const emails = [...seen];
+  if (!emails.length) fail(400, 'empty', 'לא נמצאו כתובות מייל תקינות בסיומת @' + EMAIL_DOMAIN + '.');
+  if (emails.length > 1500) fail(400, 'big', 'אפשר להוסיף עד 1500 כתובות בכל פעם.');
+  await env.DB.prepare(ALLOW_DDL).run();
+  const now = Date.now(), by = a.name || a.email;
+  for (let i = 0; i < emails.length; i += 100) {
+    await env.DB.batch(emails.slice(i, i + 100).map((e) => env.DB.prepare('INSERT OR IGNORE INTO allowlist (email,added_at,added_by) VALUES (?,?,?)').bind(e, now, by)));
+  }
+  // מי שכבר נרשם וממתין והמייל שלו ברשימה מאושר עכשיו (לא נוגעים ב"נדחה" או "הוסר")
+  const ap = await env.DB.prepare("UPDATE users SET status = 'approved', decided_by = ?, decided_at = ? WHERE status = 'pending' AND email IN (SELECT email FROM allowlist)").bind('רשימה אוטומטית', now).run();
+  await env.DB.batch([audit(env, a, 'allowlist_add', String(emails.length)), bump(env)]);
+  const count = (await env.DB.prepare('SELECT COUNT(*) AS n FROM allowlist').first()).n;
+  return json({ ok: true, added: emails.length, invalid: bad, count, approvedNow: (ap.meta && ap.meta.changes) || 0 });
+}
+async function allowClear(c) {
+  const { env } = c;
+  const a = await needAdmin(c);
+  try { await env.DB.prepare('DELETE FROM allowlist').run(); } catch (e) { /* אין טבלה */ }
+  await env.DB.batch([audit(env, a, 'allowlist_clear', ''), bump(env)]);
+  return json({ ok: true, count: 0 });
+}
+
 /* ---------- פרופיל ---------- */
 async function saveProfile(c) {
   const { env, request } = c;
@@ -367,7 +415,9 @@ async function saveProfile(c) {
   if (photo && (photo.length > 80000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo))) fail(400, 'photo', 'התמונה לא תקינה.');
   const first = !u.profile_done;
   if (first && b.agree !== true) fail(400, 'agree', 'כדי להירשם צריך לאשר את ההתחייבות.');
-  const now = Date.now(), status = isAdmin(u) ? 'approved' : u.status;
+  const now = Date.now();
+  let status = isAdmin(u) ? 'approved' : u.status;
+  if (status === 'pending' && await onAllowlist(env, u.email)) status = 'approved'; // ברשימת האישור האוטומטי
   const st = [
     env.DB.prepare('UPDATE users SET name = ?, role = ?, photo = ?, profile_done = 1, status = ?, updated_at = ? WHERE id = ?').bind(name, b.year, photo, status, now, u.id),
     env.DB.prepare('UPDATE bookings SET name = ?, role = ? WHERE user_id = ? AND date >= ?').bind(name, b.year, u.id, israelNow().date),
@@ -375,7 +425,7 @@ async function saveProfile(c) {
   ];
   if (first) st.push(audit(env, u, 'register', u.email));
   await env.DB.batch(st);
-  if (first && !isAdmin(u)) notify(c, `נרשם/ה חדש/ה ממתין/ה לאישור: ${oneLine(name)}`,
+  if (first && !isAdmin(u) && status === 'pending') notify(c, `נרשם/ה חדש/ה ממתין/ה לאישור: ${oneLine(name)}`,
     `${oneLine(name)} (${oneLine(b.year)}) נרשם/ה למערכת הזמנת האולפנים וממתין/ה לאישור.\n\nלאישור: לשונית "ניהול" באתר\nhttps://studio-booking.photography-e89.workers.dev`);
   return json({ ok: true });
 }

@@ -556,6 +556,32 @@
   var PH_EMAIL='photography@edu.jmc.ac.il';
   function lsG(k){try{return localStorage.getItem(k)}catch(e){return null}}
   function lsS(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  function allowHTML(){
+    var h='<h3>רשימת אישור אוטומטי</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">';
+    h+='<p style="margin:0">מי שהמייל שלו ברשימה מאושר מיד כשהוא נרשם. מי שלא ברשימה ממתין לאישור ידני. '+(S.alCount==null?'':'כרגע ברשימה: <b>'+S.alCount+'</b> כתובות.')+'</p>';
+    h+='<div class="field"><label class="lbl" for="al-text">הדביקו כתובות מייל (אחת בכל שורה, או מופרדות ברווח או בפסיק)</label><textarea id="al-text" data-t="alText" dir="ltr" rows="5" placeholder="name@edu.jmc.ac.il">'+esc(S.alText||'')+'</textarea></div>';
+    if(S.alMsg)h+='<p style="margin:0" role="status"><b>'+esc(S.alMsg)+'</b></p>';
+    h+='<div class="acts"><button class="btn" data-act="al-add"'+(S.alWork?' disabled':'')+'>הוספה לרשימה</button>';
+    if(S.alClear)h+='<button class="btn danger" data-act="al-clear-yes">כן, לנקות את הרשימה</button><button class="btn ghost" data-act="al-clear-no">ביטול</button>';
+    else if(S.alCount)h+='<button class="btn ghost" data-act="al-clear-ask">ניקוי הרשימה</button>';
+    h+='</div><p class="tfnote" style="margin:0">ניקוי הרשימה לא מבטל אישורים שכבר ניתנו. נרשמים שממתינים ומופיעים ברשימה מאושרים מיד בהוספה.</p></div>';
+    return h;
+  }
+  async function alAdd(){
+    S.alWork=true;S.alMsg='';renderAdmin();
+    try{
+      var r=await api('POST','/api/admin/allowlist',{text:S.alText||''});
+      S.alCount=r.count;S.alText='';
+      S.alMsg='נוספו '+r.added+' כתובות'+(r.approvedNow?', ואושרו '+r.approvedNow+' נרשמים שהמתינו':'')+(r.invalid.length?'. לא תקינות והתעלמנו: '+r.invalid.join(', '):'')+'.';
+      await forceRefresh();
+    }catch(e){S.alMsg=e.message||'שגיאה'}
+    S.alWork=false;if(S.tab==='all')renderAdmin();
+  }
+  async function alClear(){
+    S.alClear=false;
+    try{var r=await api('POST','/api/admin/allowlist/clear',{});S.alCount=r.count;S.alMsg='הרשימה נוקתה.'}catch(e){S.alMsg=e.message||'שגיאה'}
+    renderAdmin();
+  }
   function toolsHTML(){
     if(!isAdmin())return '';
     var last=Number(lsG('yb_lastExport')||0),due=!last||Date.now()-last>30*86400000;
@@ -647,13 +673,14 @@
     }catch(e){S.cleanMsg='הניקוי הופסק. אפשר לנסות שוב.'}
     S.cleanStep=null;render();
   }
-  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
+  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
   async function loadAudit(){
     try{var r=await api('GET','/api/admin/audit');S.audit=r.items}catch(e){flash(e.message)}
     render();
   }
   function renderAdmin(){
-    var h='<div class="admin">'+membersHTML()+toolsHTML();
+    if(S.alCount==null&&!S.alBusy){S.alBusy=true;api('GET','/api/admin/allowlist').then(function(r){S.alCount=r.count;S.alBusy=false;if(S.tab==='all')renderAdmin()},function(){S.alBusy=false;S.alCount=0})}
+    var h='<div class="admin">'+membersHTML()+allowHTML()+toolsHTML();
     /* סטודנטים עם אי-הגעות */
     var by={},g;
     for(g in S.noshows){var x=S.noshows[g];if(!x||!x.uid)continue;var u=by[x.uid]||(by[x.uid]={uid:x.uid,name:x.name,email:x.email})}
@@ -863,6 +890,10 @@
     var b=e.target.closest('[data-act]'); if(!b)return;
     var a=b.dataset.act;
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
+    else if(a==='al-add'){alAdd()}
+    else if(a==='al-clear-ask'){S.alClear=true;renderAdmin()}
+    else if(a==='al-clear-no'){S.alClear=false;renderAdmin()}
+    else if(a==='al-clear-yes'){alClear()}
     else if(a==='tab'){S.tab=b.dataset.v;S.confirmCancel=null;if(S.tab==='book'&&S.step==='done'){S.step='slots'}render()}
     else if(a==='home'){closePlan(true);S.tab='book';S.confirmCancel=null;S.editing=false;S.regErr='';if(S.step==='done')S.step='slots';render();window.scrollTo(0,0)}
     else if(a==='noshow-mark'){markNoShow(b.dataset.g,true)}
