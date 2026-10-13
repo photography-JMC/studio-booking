@@ -153,6 +153,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'GET' && path === '/api/admin/allowlist/list') res = await allowList(c);
   else if (method === 'POST' && path === '/api/admin/allowlist/role') res = await allowSetRole(c);
   else if (method === 'POST' && path === '/api/admin/allowlist/remove') res = await allowRemove(c);
+  else if (method === 'POST' && path === '/api/admin/allowlist/name') res = await allowSetName(c);
   else fail(404, 'not_found', 'לא נמצא.');
   if (c.refreshCookie) res.headers.append('Set-Cookie', cookieHeader(c.refreshCookie, SESSION_MS / 1000));
   return res;
@@ -456,6 +457,23 @@ async function allowSetRole(c) {
   if (!isAdminEmail(email)) st.unshift(
     env.DB.prepare('UPDATE users SET role = ? WHERE email = ? AND profile_done = 1').bind(b.role, email),
     env.DB.prepare('UPDATE bookings SET role = ? WHERE email = ? AND date >= ?').bind(b.role, email, israelNow().date));
+  await env.DB.batch(st);
+  return json({ ok: true });
+}
+async function allowSetName(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const b = await readBody(request);
+  const email = String(b.email || '').toLowerCase();
+  const name = String(b.name || '').trim().replace(/\s+/g, ' ');
+  if (!EMAIL_RE.test(email) || name.length > 60) fail(400, 'bad', 'נתונים לא תקינים.');
+  await ensureAllow(env);
+  const r = await env.DB.prepare('UPDATE allowlist SET name = ? WHERE email = ?').bind(name, email).run();
+  if (!((r.meta && r.meta.changes) || 0)) fail(404, 'gone', 'הכתובת לא נמצאת ברשימה.');
+  const st = [audit(env, a, 'allowlist_name', email, name), bump(env)];
+  if (name && !isAdminEmail(email)) st.unshift( // מי שכבר רשום: גם השם שלו והזמנותיו העתידיות מתעדכנים
+    env.DB.prepare('UPDATE users SET name = ?, updated_at = ? WHERE email = ? AND profile_done = 1').bind(name, Date.now(), email),
+    env.DB.prepare('UPDATE bookings SET name = ? WHERE email = ? AND date >= ?').bind(name, email, israelNow().date));
   await env.DB.batch(st);
   return json({ ok: true });
 }

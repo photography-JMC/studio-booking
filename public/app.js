@@ -581,8 +581,9 @@
     var cap=it.length>300;
     return '<p class="tfnote" style="margin:0 0 6px">מוצגים '+Math.min(it.length,300)+' מתוך '+it.length+(cap?' (צמצמו בחיפוש)':'')+'</p><div class="list" style="max-height:420px;overflow:auto">'+it.slice(0,300).map(function(x){
       var ask=S.alDel===x.email;
-      return '<div class="card item"><div><h3>'+(x.name?esc(x.name):'(בלי שם)')+'</h3><p><bdi dir="ltr">'+esc(x.email)+'</bdi> · '+(x.status?(x.status==='approved'?'רשום/ה ומאושר/ת':x.status==='pending'?'רשום/ה וממתין/ה':x.status==='rejected'?'נדחה':'הוסר/ה'):'עוד לא נרשם/ה')+'</p></div><div class="acts">'+
+      return '<div class="card item"><div>'+(S.alEdit===x.email?'<input id="al-nm" maxlength="60" aria-label="שם מלא" value="'+esc(S.alEditVal||'')+'" style="margin-bottom:6px">':'<h3>'+(x.name?esc(x.name):'(בלי שם)')+'</h3>')+'<p><bdi dir="ltr">'+esc(x.email)+'</bdi> · '+(x.status?(x.status==='approved'?'רשום/ה ומאושר/ת':x.status==='pending'?'רשום/ה וממתין/ה':x.status==='rejected'?'נדחה':'הוסר/ה'):'עוד לא נרשם/ה')+'</p></div><div class="acts">'+
         '<select class="al-rolesel" data-em="'+esc(x.email)+'" aria-label="תפקיד">'+YEARS.map(function(y){return '<option'+(x.role===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select>'+
+        (S.alEdit===x.email?'<button class="btn" data-act="al-nm-save" data-em="'+esc(x.email)+'">שמירה</button><button class="btn ghost" data-act="al-nm-cancel">ביטול</button>':'<button class="btn ghost" data-act="al-nm-edit" data-em="'+esc(x.email)+'" data-nm="'+esc(x.name||'')+'">עריכת שם</button>')+
         (ask?'<button class="btn danger" data-act="al-del-yes" data-em="'+esc(x.email)+'">כן, להסיר</button><button class="btn ghost" data-act="al-del-no">ביטול</button>':'<button class="btn ghost" data-act="al-del" data-em="'+esc(x.email)+'">הסרה</button>')+'</div></div>'}).join('')+'</div>';
   }
   async function alLoadList(){
@@ -591,6 +592,11 @@
   }
   async function alSetRole(em,role){
     try{await api('POST','/api/admin/allowlist/role',{email:em,role:role});S.alMsg='התפקיד של '+em+' עודכן ל'+role+'.';S.alBy=null;S.alCount=null;S.alItems=null;await forceRefresh()}catch(e){S.alMsg=e.message||'שגיאה'}
+    if(S.alShow)alLoadList();renderAdmin();
+  }
+  async function alSaveName(em){
+    var nm=(S.alEditVal||'').trim();
+    try{await api('POST','/api/admin/allowlist/name',{email:em,name:nm});S.alEdit=null;S.alMsg='השם עודכן.';S.alItems=null;await forceRefresh()}catch(e){S.alMsg=e.message||'שגיאה'}
     if(S.alShow)alLoadList();renderAdmin();
   }
   async function alDel(em){
@@ -705,7 +711,7 @@
     }catch(e){S.cleanMsg='הניקוי הופסק. אפשר לנסות שוב.'}
     S.cleanStep=null;render();
   }
-  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',allowlist_role:'שינוי תפקיד ברשימה',allowlist_remove:'הסרה מהרשימה האוטומטית',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
+  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',allowlist_role:'שינוי תפקיד ברשימה',allowlist_name:'עריכת שם ברשימה',allowlist_remove:'הסרה מהרשימה האוטומטית',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
   async function loadAudit(){
     try{var r=await api('GET','/api/admin/audit');S.audit=r.items}catch(e){flash(e.message)}
     render();
@@ -924,6 +930,9 @@
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
     else if(a==='al-add'){alAdd()}
     else if(a==='al-show'){S.alShow=!S.alShow;if(S.alShow&&!S.alItems)alLoadList();renderAdmin()}
+    else if(a==='al-nm-edit'){S.alEdit=b.dataset.em;S.alEditVal=b.dataset.nm||'';S.alDel=null;var le=$('#al-list');if(le)le.innerHTML=alListHTML();var ni=$('#al-nm');if(ni)ni.focus()}
+    else if(a==='al-nm-cancel'){S.alEdit=null;var lc=$('#al-list');if(lc)lc.innerHTML=alListHTML()}
+    else if(a==='al-nm-save'){alSaveName(b.dataset.em)}
     else if(a==='al-del'){S.alDel=b.dataset.em;var l=$('#al-list');if(l)l.innerHTML=alListHTML()}
     else if(a==='al-del-no'){S.alDel=null;var l2=$('#al-list');if(l2)l2.innerHTML=alListHTML()}
     else if(a==='al-del-yes'){alDel(b.dataset.em)}
@@ -1002,6 +1011,7 @@
   });
   function onField(e){
     var t=e.target,d=t.dataset||{};
+    if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
     if(t.classList&&t.classList.contains('al-rolesel')){if(e.type==='change')alSetRole(d.em,t.value);return}
     if(d.photo){
