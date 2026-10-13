@@ -685,6 +685,7 @@ async function statsData(c) {
   const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 60);
   const purpose = PURPOSES.includes(sp.get('purpose')) ? sp.get('purpose') : '';
   const role = YEARS.includes(sp.get('role')) ? sp.get('role') : '';
+  const year = STUDY_YEARS.includes(sp.get('year')) ? sp.get('year') : '';
   const from = validDate(sp.get('from') || '') ? sp.get('from') : '0000-00-00';
   const to = validDate(sp.get('to') || '') ? sp.get('to') : today; // ברירת מחדל: עד היום, בלי הזמנות עתידיות
   const detail = sp.get('detail') === '1';
@@ -698,21 +699,23 @@ async function statsData(c) {
       FROM booking_people bp JOIN users u ON u.id = bp.uid
       WHERE bp.gid IN (SELECT gid FROM bookings WHERE date >= ? AND date <= ?)`).bind(from, to),
     env.DB.prepare('SELECT gid, user_id FROM noshows WHERE date >= ? AND date <= ?').bind(from, to),
+    env.DB.prepare("SELECT user_id, study_year, MAX(date) FROM bookings WHERE study_year <> '' GROUP BY user_id"), // שנת הלימוד האחרונה של כל אדם
   ]);
+  const ymap = new Map(out[3].results.map((r) => [r.user_id, r.study_year]));
   const parts = {};
   for (const r of out[1].results) (parts[r.gid] = parts[r.gid] || []).push(r);
   const noshow = new Set(out[2].results.map((r) => r.gid));
-  const match = (p) => (!role || p.role === role) && (!q || String(p.name || '').toLowerCase().includes(q) || String(p.email || '').toLowerCase().includes(q));
+  const match = (p) => (!role || p.role === role) && (!year || p.year === year) && (!q || String(p.name || '').toLowerCase().includes(q) || String(p.email || '').toLowerCase().includes(q));
   const people = new Map(), purposes = new Map(), detailRows = [];
   const person = (uid, name, email, rl) => {
-    if (!people.has(uid)) people.set(uid, { uid, name: name || '', email: email || '', role: rl || '', bookings: 0, hours: 0, pBookings: 0, pHours: 0, noshows: 0, by: new Map() });
+    if (!people.has(uid)) people.set(uid, { uid, name: name || '', email: email || '', role: rl || '', year: ymap.get(uid) || '', bookings: 0, hours: 0, pBookings: 0, pHours: 0, noshows: 0, by: new Map() });
     return people.get(uid);
   };
   const totals = { bookings: 0, hours: 0, people: new Set() };
   for (const g of out[0].results) {
     if (purpose && g.purpose !== purpose) continue;
     const hours = Math.max(1, g.hi - g.lo), ps = (parts[g.gid] || []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name), 'he'));
-    const involved = [{ uid: g.uid, name: g.name, email: g.email, role: g.role, owner: true }, ...ps.map((x) => ({ uid: x.uid, name: x.name, email: x.email, role: x.role }))];
+    const involved = [{ uid: g.uid, name: g.name, email: g.email, role: g.role, year: ymap.get(g.uid) || '', owner: true }, ...ps.map((x) => ({ uid: x.uid, name: x.name, email: x.email, role: x.role, year: ymap.get(x.uid) || '' }))];
     if (!involved.some(match)) continue; // בלי סינון: כולם. עם סינון: הזמנות שמעורב בהן מישהו שמתאים
     totals.bookings++; totals.hours += hours;
     const pu = purposes.get(g.purpose) || { purpose: g.purpose, bookings: 0, hours: 0, personHours: 0, who: new Set() };
@@ -731,7 +734,7 @@ async function statsData(c) {
     });
   }
   const peopleOut = [...people.values()].map((p) => ({
-    uid: p.uid, name: p.name, email: p.email, role: p.role, bookings: p.bookings, hours: p.hours, pBookings: p.pBookings, pHours: p.pHours,
+    uid: p.uid, name: p.name, email: p.email, role: p.role, year: p.year, bookings: p.bookings, hours: p.hours, pBookings: p.pBookings, pHours: p.pHours,
     total: p.hours + p.pHours, noshows: p.noshows, by: [...p.by.entries()].sort((a, b) => b[1] - a[1]),
   })).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name), 'he'));
   const purposesOut = [...purposes.values()].map((x) => ({ purpose: x.purpose, bookings: x.bookings, hours: x.hours, personHours: x.personHours, people: x.who.size })).sort((a, b) => b.hours - a.hours);

@@ -732,6 +732,7 @@
     if(s.q)p.push('q='+encodeURIComponent(s.q));
     if(s.purpose)p.push('purpose='+encodeURIComponent(s.purpose));
     if(s.role)p.push('role='+encodeURIComponent(s.role));
+    if(s.year)p.push('year='+encodeURIComponent(s.year));
     if(s.from)p.push('from='+s.from);
     if(s.to)p.push('to='+s.to);
     if(detail)p.push('detail=1');
@@ -763,7 +764,8 @@
       '<div class="field"><label class="lbl" for="st-person">בחירת אדם מהרשימה</label><select id="st-person"><option value="">כל הרשומים</option>'+stPeopleOpts(s.q)+'</select></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-purpose">סוג פעילות</label><select id="st-purpose"><option value="">הכול</option>'+PURPOSES.map(function(y){return '<option'+(s.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="st-role">תפקיד</label><select id="st-role"><option value="">הכול</option>'+YEARS.map(function(y){return '<option'+(s.role===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
-      '<div class="field"><label class="lbl" for="st-period">תקופה</label><select id="st-period"><option value=""'+(s.period?'':' selected')+'>כל התקופה / תאריכים לבחירה</option><option value="year"'+(s.period==='year'?' selected':'')+'>כל השנה</option><option value="sem1"'+(s.period==='sem1'?' selected':'')+'>סמסטר א\'</option><option value="sem2"'+(s.period==='sem2'?' selected':'')+'>סמסטר ב\'</option></select></div>'+
+      '<div class="row2"><div class="field"><label class="lbl" for="st-period">תקופה</label><select id="st-period"><option value=""'+(s.period?'':' selected')+'>כל התקופה / תאריכים לבחירה</option><option value="year"'+(s.period==='year'?' selected':'')+'>כל השנה</option><option value="sem1"'+(s.period==='sem1'?' selected':'')+'>סמסטר א\'</option><option value="sem2"'+(s.period==='sem2'?' selected':'')+'>סמסטר ב\'</option></select></div>'+
+      '<div class="field"><label class="lbl" for="st-year">שנת לימוד</label><select id="st-year"><option value="">הכול</option>'+STUDY_YEARS.map(function(y){return '<option'+(s.year===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="st-from">מתאריך</label><input id="st-from" type="date" value="'+esc(s.from)+'" dir="ltr" style="text-align:right"></div>'+
       '<div class="field"><label class="lbl" for="st-to">עד תאריך (ריק: עד היום)</label><input id="st-to" type="date" value="'+esc(s.to)+'" dir="ltr" style="text-align:right"></div></div>'+
       '<div class="acts"><button class="btn'+(s.view==='people'?'':' ghost')+'" data-act="st-view" data-v="people" aria-pressed="'+(s.view==='people')+'">לפי אנשים</button><button class="btn'+(s.view==='purposes'?'':' ghost')+'" data-act="st-view" data-v="purposes" aria-pressed="'+(s.view==='purposes')+'">לפי סוג פעילות</button><button class="btn ghost" data-act="st-reset">איפוס סינון</button><button class="btn ghost" data-act="st-export"'+(s.exporting?' disabled':'')+'>'+(s.exporting?'מכין קובץ…':'יצוא לאקסל')+'</button></div>'+
@@ -771,7 +773,7 @@
     $('#main').innerHTML=h;
     if(!s.data&&!s.busy)stLoad();else stRes();
   }
-  var ST_COLS=[['name','שם'],['role','תפקיד'],['bookings','הזמנות'],['hours','שעות כמזמין'],['pBookings','השתתפויות'],['pHours','שעות כמשתתף'],['total','סה"כ שעות'],['noshows','אי-הגעות']];
+  var ST_COLS=[['name','שם'],['role','תפקיד'],['year','שנת לימוד'],['bookings','הזמנות'],['hours','שעות כמזמין'],['pBookings','השתתפויות'],['pHours','שעות כמשתתף'],['total','סה"כ שעות'],['noshows','אי-הגעות']];
   var PU_COLS=[['purpose','סוג פעילות'],['bookings','הזמנות'],['hours','שעות'],['personHours','שעות-אדם'],['people','אנשים שונים']];
   function stSorted(rows){
     var k=S.st.sk,d=S.st.sd;
@@ -786,7 +788,7 @@
     if(!rows.length){el.innerHTML=h+'<div class="card empty"><p style="margin:0">אין נתונים לסינון הזה.</p></div>';return}
     h+='<div class="sttwrap"><table class="stt"><thead><tr>'+cols.map(function(c){return '<th scope="col"><button type="button" class="sth" data-act="st-sort" data-k="'+c[0]+'">'+c[1]+(s.sk===c[0]?(s.sd<0?' ▼':' ▲'):'')+'</button></th>'}).join('')+'</tr></thead><tbody>';
     stSorted(rows).forEach(function(x){
-      if(s.view==='people')h+='<tr><td><b>'+esc(x.name||'(ללא שם)')+'</b><br><span class="stsub" dir="ltr">'+esc(x.email||'')+'</span>'+(x.by.length?'<br><span class="stsub">'+x.by.slice(0,3).map(function(b){return esc(b[0])+' ('+b[1]+')'}).join(' · ')+'</span>':'')+'</td><td>'+roleChip(x.role)+'</td><td>'+x.bookings+'</td><td>'+x.hours+'</td><td>'+x.pBookings+'</td><td>'+x.pHours+'</td><td><b>'+x.total+'</b></td><td'+(x.noshows?' class="al-no"':'')+'>'+x.noshows+'</td></tr>';
+      if(s.view==='people')h+='<tr><td><b>'+esc(x.name||'(ללא שם)')+'</b><br><span class="stsub" dir="ltr">'+esc(x.email||'')+'</span>'+(x.by.length?'<br><span class="stsub">'+x.by.slice(0,3).map(function(b){return esc(b[0])+' ('+b[1]+')'}).join(' · ')+'</span>':'')+'</td><td>'+roleChip(x.role)+'</td><td>'+esc(x.year||'')+'</td><td>'+x.bookings+'</td><td>'+x.hours+'</td><td>'+x.pBookings+'</td><td>'+x.pHours+'</td><td><b>'+x.total+'</b></td><td'+(x.noshows?' class="al-no"':'')+'>'+x.noshows+'</td></tr>';
       else h+='<tr><td><b>'+esc(x.purpose)+'</b></td><td>'+x.bookings+'</td><td>'+x.hours+'</td><td>'+x.personHours+'</td><td>'+x.people+'</td></tr>';
     });
     el.innerHTML=h+'</tbody></table></div><p class="tfnote">שעות כמזמין: אורך ההזמנות שהוא הזמין. שעות כמשתתף: הזמנות של אחרים שנבחר בהן כמשתתף. שעות-אדם: אורך ההזמנה כפול מספר המשתתפים שהוזן בה.</p>';
@@ -795,13 +797,13 @@
     stInit();S.st.exporting=true;renderStats();
     try{
       var r=await api('GET','/api/admin/stats'+stQuery(true));
-      var ppl=[['שם','מייל','תפקיד','הזמנות כמזמין','שעות כמזמין','השתתפויות','שעות כמשתתף','סה"כ שעות','אי-הגעות','סוגי פעילות']];
-      r.people.forEach(function(x){ppl.push([x.name||'',x.email||'',x.role||'',x.bookings,x.hours,x.pBookings,x.pHours,x.total,x.noshows,x.by.map(function(b){return b[0]+' ('+b[1]+')'}).join(', ')])});
+      var ppl=[['שם','מייל','תפקיד','שנת לימוד','הזמנות כמזמין','שעות כמזמין','השתתפויות','שעות כמשתתף','סה"כ שעות','אי-הגעות','סוגי פעילות']];
+      r.people.forEach(function(x){ppl.push([x.name||'',x.email||'',x.role||'',x.year||'',x.bookings,x.hours,x.pBookings,x.pHours,x.total,x.noshows,x.by.map(function(b){return b[0]+' ('+b[1]+')'}).join(', ')])});
       var pur=[['סוג פעילות','הזמנות','שעות','שעות-אדם','אנשים שונים']];
       r.purposes.forEach(function(x){pur.push([x.purpose,x.bookings,x.hours,x.personHours,x.people])});
       var det=[['תאריך','משעה','עד שעה','עמדות','שם המזמין','מייל','תפקיד','שנת לימוד','סוג פעילות','משתתפים','שמות המשתתפים','לא הגיע','הערות']];
       (r.detail||[]).forEach(function(o){det.push([dmy(o.date),hh(o.lo),hh(o.hi),namesOf(String(o.st||'').split(',')),o.name||'',o.email||'',o.role||'',o.sy||'',o.purpose||'',o.people==null?'':o.people,o.with||'',o.noshow?'כן':'',o.notes||''])});
-      var info=[['פרמטר','ערך'],['תקופה',({year:'כל השנה',sem1:'סמסטר א\'',sem2:'סמסטר ב\''})[S.st.period]||'תאריכים לבחירה'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
+      var info=[['פרמטר','ערך'],['תקופה',({year:'כל השנה',sem1:'סמסטר א\'',sem2:'סמסטר ב\''})[S.st.period]||'תאריכים לבחירה'],['מתאריך',r.from?dmy(r.from):'מההתחלה'],['עד תאריך',dmy(r.to)],['סינון שם/מייל',S.st.q||'הכול'],['סינון סוג פעילות',S.st.purpose||'הכול'],['סינון תפקיד',S.st.role||'הכול'],['סינון שנת לימוד',S.st.year||'הכול'],['סה"כ הזמנות',r.totals.bookings],['סה"כ שעות',r.totals.hours],['סה"כ אנשים',r.totals.people]];
       var blob=buildXlsx([{name:'לפי אנשים',rows:ppl},{name:'לפי סוג פעילות',rows:pur},{name:'הזמנות מפורטות',rows:det},{name:'פרטי הסינון',rows:info}]);
       var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='studio-stats-'+ds(new Date())+'.xlsx';document.body.appendChild(a);a.click();
       setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);
@@ -1061,7 +1063,7 @@
     if(a==='cls-toggle'){S.clsOpen=!S.clsOpen;renderList()}
     else if(a==='solo-off'){S.form.solo=false;renderSide()}
     else if(a==='st-view'){stInit();S.st.view=b.dataset.v;S.st.sk=b.dataset.v==='people'?'total':'hours';S.st.sd=-1;renderStats()}
-    else if(a==='st-sort'){stInit();var k=b.dataset.k;if(S.st.sk===k)S.st.sd=-S.st.sd;else{S.st.sk=k;S.st.sd=(k==='name'||k==='role'||k==='purpose')?1:-1}stRes()}
+    else if(a==='st-sort'){stInit();var k=b.dataset.k;if(S.st.sk===k)S.st.sd=-S.st.sd;else{S.st.sk=k;S.st.sd=(k==='name'||k==='role'||k==='purpose'||k==='year')?1:-1}stRes()}
     else if(a==='st-reset'){var v=S.st&&S.st.view||'people';S.st=null;stInit();S.st.view=v;S.st.sk=v==='people'?'total':'hours';renderStats()}
     else if(a==='st-export'){stExport()}
     else if(a==='part-rm'){S.form.part=(S.form.part||[]).filter(function(x){return x.uid!==b.dataset.u});S.form.people=Math.max(1,S.form.part.length+1);renderSide()}
