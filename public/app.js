@@ -1181,10 +1181,6 @@
     renderTabs(); renderNotice();
     if(needReg()){renderReg();return}
     if(S.tab==='book')renderBook(); else renderList();
-    if(!S.planAuto&&S.tab==='book'&&S.db&&S.memberLoaded&&canBook()&&!needSafety()){
-      S.planAuto=true;
-      setTimeout(function(){var m=$('#modal');if(m&&m.hidden)openPlan(null)},60);
-    }
   }
 
   /* ----- Profile storage ----- */
