@@ -268,3 +268,8 @@ body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10p
 .sf-scroll p{margin:0 0 10px;line-height:1.65;font-size:14.5px}
 .sf-chk{display:flex;gap:10px;align-items:flex-start;line-height:1.5}
 .sf-chk input{margin-top:4px;flex:none;width:18px;height:18px}
+
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}
+.credit a{color:inherit}
+.pv h3{margin:14px 0 6px;font-size:1.05em}.pv ul{margin:0 0 8px;padding-inline-start:20px}.pv li{margin-bottom:4px}.pv a{color:inherit;text-decoration:underline}
+.sf-scroll.pv{max-height:60vh}

@@ -637,6 +637,7 @@ async function saveProfile(c) {
   if (photo && (photo.length > 80000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo))) fail(400, 'photo', 'התמונה לא תקינה.');
   const first = !u.profile_done;
   if (first && b.agree !== true) fail(400, 'agree', 'כדי להירשם צריך לאשר את ההתחייבות.');
+  if (first && b.privacy !== true) fail(400, 'privacy', 'כדי להירשם צריך לאשר שקראתם את הודעת הפרטיות. אם הדף פתוח זמן רב, רעננו אותו.');
   const now = Date.now();
   let status = isAdmin(u) ? 'approved' : u.status;
   const listed = isAdmin(u) ? null : await allowRole(env, u.email); // התפקיד נקבע לפי רשימת האישור האוטומטי

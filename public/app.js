@@ -115,7 +115,7 @@
     step:'slots',err:'',busy:false,done:null,confirmCancel:null,
     ver:0,polls:0,loaded:false,flash:'',bookings:{},mine:{},noshows:{},releases:{},admins:{},transfers:{},members:{},member:null,memberLoaded:false,confirmRemove:null,transferFor:null,tfEmail:'',tfErr:'',tfMsg:'',db:null,confirmRelease:null,uid:null,canEdit:false,ready:false,out:store('yb_out')==='1',
     profile:null,profileLoaded:false,editing:false,regErr:'',regBusy:false,confirmDelete:false,
-    reg:{name:'',year:'',email:'',agree:false},
+    reg:{name:'',year:'',email:'',agree:false,privacy:false},
     form:{purpose:'',people:1,notes:'',part:[],studyYear:''}
   };
   function needReg(){return S.ready&&S.db&&S.uid&&S.profileLoaded&&(!S.profile||S.editing)}
@@ -280,6 +280,21 @@
       closeEdit();await forceRefresh();renderList();flash('ההזמנה עודכנה.');
     }catch(x){e.busy=false;e.err=x.message||'השמירה לא הצליחה.';var el=$('#ed-err');if(el)el.textContent=e.err}
   }
+  /* ----- הודעת פרטיות ----- */
+  var PRIVACY_URL='https://www.jmc.ac.il/%D7%9E%D7%93%D7%99%D7%A0%D7%99%D7%95%D7%AA-%D7%A4%D7%A8%D7%98%D7%99%D7%95%D7%AA/';
+  function privacyHTML(){
+    return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pv-h">'+
+      '<div class="modal-head"><h2 id="pv-h">הודעת פרטיות</h2><button class="btn ghost" data-act="privacy-close">סגירה</button></div>'+
+      '<div class="pv">'+
+      '<p>המערכת שומרת שם, מייל מוסדי, תפקיד ופרטי הזמנות, לצורך ניהול ההזמנות בלבד.</p>'+
+      '<p>שם המזמין גלוי למשתמשים מאושרים. מייל והערות גלויים רק לכם ולמנהלי המערכת.</p>'+
+      '<p>המידע אינו מועבר מחוץ למכללה, מלבד Google (כניסה) ו-Cloudflare (אחסון).</p>'+
+      '<p>לעיון, תיקון או מחיקה: <span dir="ltr">yoramrs@edu.jmc.ac.il</span></p>'+
+      '<p><a href="'+PRIVACY_URL+'" target="_blank" rel="noopener noreferrer">מדיניות הפרטיות של המכללה</a></p>'+
+      '</div><div class="acts"><button class="btn" data-act="privacy-close">הבנתי</button></div></div>';
+  }
+  function openPrivacy(){var m=$('#modal');if(!m)return;S.sfOpen=true;m.innerHTML=privacyHTML();m.hidden=false;var b=m.querySelector('.btn');if(b)b.focus()}
+  function closePrivacy(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
   function closeSafety(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
   async function signSafety(){
     if(S.sfBusy||!S.sfRead||!S.sfText)return;
@@ -1096,7 +1111,7 @@
       '<div class="field"><label class="lbl" for="r-name">שם מלא</label><input id="r-name" autocomplete="name" data-r="name" value="'+esc(r.name)+'"></div>'+
       '<div class="row2"><div class="field"><label class="lbl" for="r-year">תפקיד</label><select id="r-year" data-r="year"'+(S.listRole?' disabled':'')+'><option value="">בחירה</option>'+YEARS.map(function(y){return '<option'+(r.year===y?' selected':'')+'>'+y+'</option>'}).join('')+'</select></div>'+
       '<div class="field"><label class="lbl" for="r-email">מייל ארגוני</label><input id="r-email" type="email" autocomplete="email" dir="ltr" data-r="email" placeholder="name@'+EMAIL_DOMAIN+'" value="'+esc(S.authEmail||r.email)+'"'+(S.authEmail?' readonly':'')+' style="text-align:right"></div></div>'+
-      (S.listRole?'<p class="tfnote" style="margin:0">התפקיד נקבע עבורך מראש על ידי מנהל המערכת.</p>':'')+(edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+
+      (S.listRole?'<p class="tfnote" style="margin:0">התפקיד נקבע עבורך מראש על ידי מנהל המערכת.</p>':'')+(edit?'':'<label class="chk"><input type="checkbox" id="r-agree" data-r="agree"'+(r.agree?' checked':'')+'><span>אני מתחייב/ת לשמור על ציוד האולפן, להגיע בזמן ולבטל הזמנה שאיני מממש/ת.</span></label>')+(edit?'':'<label class="chk"><input type="checkbox" id="r-privacy" data-r="privacy"'+(r.privacy?' checked':'')+'><span>קראתי את <button type="button" class="linkbtn" data-act="privacy-open">הודעת הפרטיות</button> ואת <a href="'+PRIVACY_URL+'" target="_blank" rel="noopener noreferrer">מדיניות הפרטיות של המכללה</a>, ואני מסכים/ה לשמירת המידע כמתואר.</span></label>')+
       (S.regErr?'<p class="err" role="alert">'+esc(S.regErr)+'</p>':'')+
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="reg-save"'+(S.regBusy?' disabled':'')+'>'+(S.regBusy?'שומר…':(edit?'שמירה':'סיום הרשמה'))+'</button>'+
       (edit?'<button class="btn ghost" data-act="reg-cancel">ביטול</button>':'')+'</div></div>';
@@ -1137,7 +1152,7 @@
     var L=S.login||(S.login={busy:false,err:''});
     $('#main').innerHTML='<div class="card reg"><div><h2>כניסה להזמנת אולפנים</h2><p>הכניסה למערכת היא עם חשבון Google של המכללה, בסיומת \u2066@'+EMAIL_DOMAIN+'.\u2069'+'</p></div>'+
       (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
-      (L.busy?'<p class="lbl">מתחבר…</p>':'<div id="g-btn" style="min-height:44px"></div>')+'</div>';
+      (L.busy?'<p class="lbl">מתחבר…</p>':'<div id="g-btn" style="min-height:44px"></div>')+'<p class="lbl" style="margin:0">בכניסה נשמרים שם, מייל מוסדי ופרטי ההזמנות שלכם. <button type="button" class="linkbtn" data-act="privacy-open">הודעת פרטיות</button></p></div>';
     if(!L.busy)mountGoogle();
   }
   var gTries=0,gInit=false;
@@ -1191,9 +1206,10 @@
     if(!name){S.regErr='נא למלא שם מלא.';return renderReg()}
     if(!r.year){S.regErr='נא לבחור תפקיד.';return renderReg()}
     if(!edit&&!r.agree){S.regErr='כדי להירשם צריך לאשר את ההתחייבות.';return renderReg()}
+    if(!edit&&!r.privacy){S.regErr='כדי להירשם צריך לאשר שקראתם את הודעת הפרטיות.';return renderReg()}
     S.regErr='';S.regBusy=true;renderReg();
     try{
-      await api('PUT','/api/profile',{name:name,year:r.year,photo:r.photo||'',agree:!!r.agree});
+      await api('PUT','/api/profile',{name:name,year:r.year,photo:r.photo||'',agree:!!r.agree,privacy:!!r.privacy});
       S.regBusy=false;S.editing=false;
       await forceRefresh();
       render();
@@ -1277,6 +1293,8 @@
     else if(a==='sf-export'){sfExport()}
     else if(a==='safety-open'){openSafety()}
     else if(a==='safety-close'){closeSafety()}
+    else if(a==='privacy-open'){openPrivacy()}
+    else if(a==='privacy-close'){closePrivacy()}
     else if(a==='edit-open'){openEdit(b.dataset.g)}
     else if(a==='edit-close'){closeEdit()}
     else if(a==='edit-save'){saveEdit()}
@@ -1408,7 +1426,7 @@
   document.addEventListener('change',onField);
   async function deleteProfile(){
     S.confirmDelete=false;
-    try{await api('DELETE','/api/profile');S.profile=null;S.reg={name:'',year:'',email:S.authEmail||'',agree:false};S.tab='book';await forceRefresh()}catch(e){flash(e.message)}
+    try{await api('DELETE','/api/profile');S.profile=null;S.reg={name:'',year:'',email:S.authEmail||'',agree:false,privacy:false};S.tab='book';await forceRefresh()}catch(e){flash(e.message)}
     render();
   }
 
