@@ -684,8 +684,7 @@ async function markNoShow(c) {
 }
 /* ---------- טופס כללי בטיחות: הצהרה של המשתמש, ואישור או ביטול על ידי מנהל ---------- */
 async function needSafety(env, u) {
-  if (isAdmin(u)) return; // מנהלי המערכת פטורים
-  await ensureSafety(env);
+  await ensureSafety(env); // החתימה נדרשת מכולם: מנהלים, מרצים, מתרגלים וסטודנטים
   const r = await env.DB.prepare('SELECT version FROM safety WHERE user_id = ?').bind(u.id).first();
   if (!r || r.version !== SAFETY.version) fail(403, 'safety', 'כדי להזמין אולפן צריך לקרוא את כללי ההתנהגות בחללים המעשיים ובאולפנים ולחתום עליהם במערכת.');
 }
