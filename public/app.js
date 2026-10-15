@@ -1384,9 +1384,12 @@
       var h=Number(sl.dataset.h);if(h===drag.last)return;
       var lo=Math.min(drag.h0,h),n=Math.abs(h-drag.h0)+1;
       if(n>maxDur()||!rangeOK(lo,n))return;
-      drag.last=h;drag.moved=true;S.anchor=drag.h0;S.start=lo;S.dur=n;S.msg='';renderSide();
+      drag.last=h;drag.moved=true;S.anchor=drag.h0;S.start=lo;S.dur=n;S.msg='';
+      /* לא מציירים מחדש באמצע הגרירה: אחרת האצבע נשארת על כפתור שנמחק ושאר התנועה אובדת */
+      document.querySelectorAll('.slot[data-h]').forEach(function(x){var k=Number(x.dataset.h);x.setAttribute('aria-pressed',String(k>=lo&&k<lo+n))});
     },{passive:true});
-    document.addEventListener('touchend',function(){if(drag&&drag.moved)swallow=Date.now()+500;drag=null},{passive:true});
+    document.addEventListener('touchend',function(){if(drag&&drag.moved){swallow=Date.now()+500;renderSide()}drag=null},{passive:true});
+    document.addEventListener('touchcancel',function(){if(drag&&drag.moved)renderSide();drag=null},{passive:true});
     document.addEventListener('click',function(e){
       if(swallow>Date.now()&&e.target.closest&&e.target.closest('.slot')){e.stopPropagation();e.preventDefault();swallow=0}
     },true);
