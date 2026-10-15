@@ -1,4 +1,4 @@
-import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE, SAFETY_FORM_URL } from './config.js';
+import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE, SAFETY } from './config.js';
 import { json, HttpError, fail, randomHex, israelNow, validDate, addDays, absMin, nowAbs, epochOf, blockedReason, closeOf, isAdminEmail, rateLimit, sha256Hex } from './util.js';
 import { verifyGoogleToken, newSessionToken, hashToken, cookieHeader, readCookie, SESSION_MS } from './auth.js';
 
@@ -61,6 +61,9 @@ let SAFETY_READY = false;
 async function ensureSafety(env) {
   if (SAFETY_READY) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS safety (user_id TEXT PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL DEFAULT \'\', checked_at INTEGER, checked_by TEXT)').run();
+  for (const col of ['version', 'signed_name']) {
+    try { await env.DB.prepare(`ALTER TABLE safety ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`).run(); } catch (e) { /* העמודה כבר קיימת */ }
+  }
   SAFETY_READY = true;
 }
 let PEOPLE_READY = false;
@@ -191,7 +194,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, safetyUrl: SAFETY_FORM_URL,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, safety: SAFETY,
   });
 }
 
@@ -268,10 +271,10 @@ async function getState(c) {
   const releases = {}; for (const r of out[3].results) releases[r.user_id] = { uid: r.user_id, at: r.at, by: r.by_name };
   const transfers = {}; for (const r of out[4].results) transfers[r.gid] = { gid: r.gid, fromUid: r.from_uid, fromName: r.from_name, toEmail: r.to_email, status: r.status, date: r.date, from: r.from_hour, to: r.to_hour, studios: parseJson(r.studios), createdAt: r.created_at };
   const members = {}; for (const r of out[5].results) members[r.id] = { uid: r.id, name: r.name, email: r.email, role: r.role, status: r.status, createdAt: r.created_at };
-  const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, checked: !!r.checked_at, checkedBy: r.checked_by || '' };
+  const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, name: r.signed_name || '', valid: r.version === SAFETY.version };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
-  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] || null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
+  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] && safetyMap[u.id].valid ? safetyMap[u.id] : null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
 }
 
 /* ---------- הזמנות ---------- */
@@ -683,18 +686,23 @@ async function markNoShow(c) {
 async function needSafety(env, u) {
   if (isAdmin(u)) return; // מנהלי המערכת פטורים
   await ensureSafety(env);
-  const r = await env.DB.prepare('SELECT 1 AS x FROM safety WHERE user_id = ?').bind(u.id).first();
-  if (!r) fail(403, 'safety', 'כדי להזמין אולפן צריך לחתום על טופס כללי הבטיחות וההתנהגות באולפנים ולאשר זאת במערכת.');
+  const r = await env.DB.prepare('SELECT version FROM safety WHERE user_id = ?').bind(u.id).first();
+  if (!r || r.version !== SAFETY.version) fail(403, 'safety', 'כדי להזמין אולפן צריך לקרוא את כללי ההתנהגות בחללים המעשיים ובאולפנים ולחתום עליהם במערכת.');
 }
 async function safetySign(c) {
-  const { env } = c;
+  const { env, request } = c;
   const u = await needUser(c);
   await rateLimit(env, 'safe:' + u.id, 10, 600);
   if (!u.profile_done) fail(403, 'no_profile', 'יש להשלים הרשמה לפני כן.');
+  const b = await readBody(request);
+  const name = String(b.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (name.split(' ').filter((w) => w.length >= 2).length < SAFETY.minWords) fail(400, 'name', 'נא להקליד שם מלא (שם פרטי ושם משפחה) כחתימה.');
+  if (b.read !== true || b.agree !== true) fail(400, 'confirm', 'צריך לקרוא את כל הכללים עד הסוף ולסמן את שני האישורים.');
   await ensureSafety(env);
+  const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT OR IGNORE INTO safety (user_id,at,kind,by_name) VALUES (?,?, 'self', ?)").bind(u.id, Date.now(), u.name || u.email),
-    audit(env, u, 'safety_self', u.email), bump(env),
+    env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'sign', ?, ?, ?, ?, ?)").bind(u.id, now, u.name || u.email, now, 'חתימה במערכת', SAFETY.version, name),
+    audit(env, u, 'safety_sign', u.email, SAFETY.version), bump(env),
   ]);
   return json({ ok: true });
 }
@@ -703,15 +711,14 @@ async function safetyAdmin(c) {
   const a = await needAdmin(c);
   const b = await readBody(request);
   const uid = String(b.uid || ''), act = String(b.action || '');
-  if (!['verify', 'set', 'revoke'].includes(act)) fail(400, 'action', 'פעולה לא תקינה.');
+  if (!['set', 'revoke'].includes(act)) fail(400, 'action', 'פעולה לא תקינה.');
   const t = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(uid).first();
   if (!t) fail(404, 'gone', 'המשתמש לא נמצא.');
   await ensureSafety(env);
   const now = Date.now(), by = a.name || a.email;
   const st = [];
   if (act === 'revoke') st.push(env.DB.prepare('DELETE FROM safety WHERE user_id = ?').bind(uid));
-  else if (act === 'set') st.push(env.DB.prepare("INSERT INTO safety (user_id,at,kind,by_name,checked_at,checked_by) VALUES (?,?, 'admin', ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET checked_at = excluded.checked_at, checked_by = excluded.checked_by").bind(uid, now, by, now, by));
-  else st.push(env.DB.prepare('UPDATE safety SET checked_at = ?, checked_by = ? WHERE user_id = ?').bind(now, by, uid));
+  else st.push(env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'admin', ?, ?, ?, ?, '')").bind(uid, now, by, now, by, SAFETY.version));
   st.push(audit(env, a, 'safety_' + act, t.email), bump(env));
   await env.DB.batch(st);
   return json({ ok: true });

@@ -13,7 +13,7 @@
   var ADMINS=CFG.admins, PERIODS=CFG.periods, CLOSED_RANGES=CFG.closed, SHORT_DAYS=CFG.shortDays;
   var EMAIL_DOMAIN=CFG.domain;
   var EMAIL_RE=/^[a-z0-9._%+\-]+@edu\.jmc\.ac\.il$/;
-  var YEARS=CFG.years, PURPOSES=CFG.purposes, STUDY_YEARS=CFG.studyYears||[], SAFETY_URL=CFG.safetyUrl||'';
+  var YEARS=CFG.years, PURPOSES=CFG.purposes, STUDY_YEARS=CFG.studyYears||[], SAFETY=CFG.safety||{rules:[],checks:[],title:'',minWords:2};
 
   /* ===== Helpers ===== */
   var $=function(s){return document.querySelector(s)};
@@ -205,19 +205,52 @@
   function isBlocked(uid){return !!uid&&strikes(uid)>=MAX_STRIKES}
   /* ----- אישור מנהל לפני הזמנה ----- */
   function canBook(){return isAdmin()||!!(S.member&&S.member.status==='approved')}
-  /* טופס כללי בטיחות: בלי הצהרת חתימה אי אפשר להזמין (מנהלי מערכת פטורים) */
+  /* כללי התנהגות באולפנים: קריאה עד הסוף, שני אישורים וחתימה בשם מלא. בלי זה אי אפשר להזמין (מנהלי מערכת פטורים) */
   function needSafety(){return !isAdmin()&&!S.safety}
   function safetyHTML(){
-    return '<div class="blocked" role="status"><h3>לפני ההזמנה הראשונה: טופס כללי בטיחות והתנהגות</h3>'+
-      '<p>אי אפשר להזמין אולפן בלי לחתום על טופס כללי הבטיחות וההתנהגות באולפנים.</p>'+
-      '<p><a class="btn" href="'+esc(SAFETY_URL)+'" target="_blank" rel="noopener noreferrer">פתיחת הטופס וחתימה</a></p>'+
-      '<p>אחרי החתימה על הטופס, אשרו כאן. מנהלי המערכת בודקים את החתימות מול תשובות הטופס, ויכולים לבטל הצהרה שאינה נכונה.</p>'+
-      '<p><button class="btn" data-act="safety-sign"'+(S.safetyBusy?' disabled':'')+'>חתמתי על הטופס</button></p></div>';
+    return '<div class="blocked" role="status"><h3>לפני ההזמנה הראשונה: כללי התנהגות באולפנים</h3>'+
+      '<p>אי אפשר להזמין אולפן בלי לקרוא את כללי ההתנהגות בחללים המעשיים ובאולפנים ולחתום עליהם. החתימה נעשית כאן במערכת ולוקחת דקה.</p>'+
+      '<p><button class="btn" data-act="safety-open">קריאה וחתימה על הכללים</button></p></div>';
   }
+  function safetyModalHTML(){
+    var today=new Date().toLocaleDateString('he-IL');
+    return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sf-h">'+
+      '<div class="modal-head"><h2 id="sf-h">'+esc(SAFETY.title)+'</h2><button class="btn ghost" data-act="safety-close">סגירה</button></div>'+
+      '<p class="lbl" id="sf-hint" style="margin:0">יש לגלול ולקרוא את כל הכללים עד הסוף. רק אז אפשר לסמן את האישורים ולחתום.</p>'+
+      '<div class="sf-scroll" id="sf-scroll" tabindex="0" role="region" aria-label="כללי ההתנהגות">'+SAFETY.rules.map(function(r){return '<p>'+esc(r)+'</p>'}).join('')+'</div>'+
+      SAFETY.checks.map(function(t,i){return '<label class="sf-chk"><input type="checkbox" id="sf-c'+i+'" disabled><span>'+esc(t)+'</span></label>'}).join('')+
+      '<div class="field"><label class="lbl" for="sf-name">חתימה: שם מלא (שם פרטי ושם משפחה)</label><input id="sf-name" autocomplete="name" maxlength="80" disabled></div>'+
+      '<p class="lbl" style="margin:0">תאריך: '+esc(today)+'</p>'+
+      '<p class="err" id="sf-err" role="alert" style="margin:0"></p>'+
+      '<div class="acts"><button class="btn" id="sf-go" data-act="safety-sign" disabled>חתימה ואישור</button></div></div>';
+  }
+  function sfWords(){var n=($('#sf-name')||{}).value||'';return n.trim().split(/\s+/).filter(function(w){return w.length>=2}).length}
+  function sfUpdate(){
+    var m=$('#modal');if(!m||!S.sfOpen)return;
+    var c0=$('#sf-c0'),c1=$('#sf-c1'),nm=$('#sf-name'),go=$('#sf-go'),h=$('#sf-hint');if(!c0||!c1||!nm||!go)return;
+    c0.disabled=c1.disabled=nm.disabled=!S.sfRead;
+    if(h)h.textContent=S.sfRead?'קראתם עד הסוף. סמנו את שני האישורים והקלידו שם מלא כחתימה.':'יש לגלול ולקרוא את כל הכללים עד הסוף. רק אז אפשר לסמן את האישורים ולחתום.';
+    go.disabled=!(S.sfRead&&c0.checked&&c1.checked&&sfWords()>=(SAFETY.minWords||2)&&!S.sfBusy);
+  }
+  function openSafety(){
+    var m=$('#modal');if(!m)return;
+    S.sfOpen=true;S.sfRead=false;S.sfBusy=false;
+    m.innerHTML=safetyModalHTML();m.hidden=false;
+    var el=$('#sf-scroll');
+    function chk(){if(el.scrollTop+el.clientHeight>=el.scrollHeight-6){S.sfRead=true}sfUpdate()}
+    el.addEventListener('scroll',chk);
+    ['sf-c0','sf-c1'].forEach(function(id){$('#'+id).addEventListener('change',sfUpdate)});
+    $('#sf-name').addEventListener('input',sfUpdate);
+    setTimeout(chk,50);el.focus();
+  }
+  function closeSafety(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
   async function signSafety(){
-    if(S.safetyBusy)return;S.safetyBusy=true;renderSide();
-    try{await api('POST','/api/safety/sign',{});await forceRefresh()}catch(e){flash(e.message)}
-    S.safetyBusy=false;renderSide();
+    if(S.sfBusy||!S.sfRead)return;
+    var err=$('#sf-err');S.sfBusy=true;sfUpdate();
+    try{
+      await api('POST','/api/safety/sign',{name:$('#sf-name').value,read:true,agree:$('#sf-c0').checked&&$('#sf-c1').checked});
+      closeSafety();S.sfBusy=false;await forceRefresh();flash('החתימה נשמרה. אפשר להזמין אולפן.');
+    }catch(e){S.sfBusy=false;if(err)err.textContent=e.message;sfUpdate()}
   }
   async function adminSafety(uid,action){
     if(!isAdmin())return;
@@ -253,8 +286,8 @@
       else{
         var sfActs='';
         if(st==='approved'&&!isAdminEmail(m.email)){
-          if(!sf)sfActs='<button class="btn ghost" data-act="safety-set" data-u="'+u+'">סימון כחתם על טופס הבטיחות</button>';
-          else{if(!sf.checked)sfActs='<button class="btn" data-act="safety-verify" data-u="'+u+'">אישור חתימה (נבדק בטופס)</button>';sfActs+='<button class="btn ghost" data-act="safety-revoke" data-u="'+u+'">ביטול חתימה</button>'}
+          if(!sf||!sf.valid)sfActs='<button class="btn ghost" data-act="safety-set" data-u="'+u+'">סימון כחתם על כללי ההתנהגות</button>';
+          else sfActs='<button class="btn ghost" data-act="safety-revoke" data-u="'+u+'">ביטול חתימה</button>';
         }
         if(st==='pending')acts='<button class="btn" data-act="mem-ok" data-u="'+u+'">אישור</button><button class="btn ghost" data-act="mem-no" data-u="'+u+'">דחייה</button>';
         else if(st==='approved')acts='<button class="btn ghost" data-act="mem-no" data-u="'+u+'">ביטול אישור</button>';
@@ -264,7 +297,7 @@
         if(st!=='removed'&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-rm" data-u="'+u+'">הסרה</button>';
         acts=sfActs+acts;
       }
-      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span>'+(st==='approved'&&!isAdminEmail(m.email)?' · <span class="'+(sf&&sf.checked?'lbl':'tag-bl')+'">'+(!sf?'לא חתם על טופס הבטיחות':sf.checked?'חתימה על טופס הבטיחות אושרה':sf.kind==='admin'?'סומן כחתם':'הצהיר שחתם, ממתין לבדיקה')+'</span>':'')+'</h3><p>'+esc(m.email||'')+(m.role?' · '+roleChip(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
+      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span>'+(st==='approved'&&!isAdminEmail(m.email)?' · <span class="'+(sf&&sf.valid?'lbl':'tag-bl')+'">'+(!sf||!sf.valid?'לא חתם על כללי ההתנהגות':sf.kind==='admin'?'סומן כחתם על ידי מנהל':'חתם במערכת')+'</span>':'')+'</h3><p>'+esc(m.email||'')+(m.role?' · '+roleChip(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
   }
 
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
@@ -561,7 +594,7 @@
     var x=$('#pm-x');if(x)x.focus();
   }
   function refreshModal(focusId){
-    var m=$('#modal');if(!m||m.hidden)return;
+    var m=$('#modal');if(!m||m.hidden||S.sfOpen)return;
     var c=m.querySelector('.modal-card'),top=c?c.scrollTop:0,lf=c?c.scrollLeft:0;
     m.innerHTML=planModalHTML();
     c=m.querySelector('.modal-card');if(c){c.scrollTop=top;c.scrollLeft=lf}
@@ -570,6 +603,7 @@
   }
   function closePlan(noFocus){
     var m=$('#modal');if(!m||m.hidden)return;
+    S.sfOpen=false;
     m.hidden=true;m.innerHTML='';
     if(!noFocus&&planOpener&&planOpener.focus&&document.contains(planOpener))planOpener.focus();
     planOpener=null;
@@ -869,7 +903,7 @@
     }catch(e){S.cleanMsg='הניקוי הופסק. אפשר לנסות שוב.'}
     S.cleanStep=null;render();
   }
-  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',allowlist_role:'שינוי תפקיד ברשימה',allowlist_name:'עריכת שם ברשימה',allowlist_remove:'הסרה מהרשימה האוטומטית',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',safety_self:'הצהרה על חתימה בטופס בטיחות',safety_set:'סימון חתימה בטופס בטיחות',safety_verify:'אישור חתימה בטופס בטיחות',safety_revoke:'ביטול חתימה בטופס בטיחות',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
+  var AUDIT_LBL={login:'כניסה',register:'הרשמה',profile_delete:'מחיקת פרופיל',member_approved:'אישור משתמש',member_rejected:'דחיית משתמש',member_remove:'הסרת משתמש',member_purge:'מחיקת משתמש',noshow_mark:'סימון אי-הגעה',allowlist_add:'הוספה לרשימת אישור אוטומטי',allowlist_clear:'ניקוי רשימת אישור אוטומטי',allowlist_role:'שינוי תפקיד ברשימה',allowlist_name:'עריכת שם ברשימה',allowlist_remove:'הסרה מהרשימה האוטומטית',noshow_undo:'ביטול סימון אי-הגעה',release:'שחרור חסימה',safety_sign:'חתימה על כללי ההתנהגות',safety_set:'סימון חתימה על כללי ההתנהגות',safety_revoke:'ביטול חתימה על כללי ההתנהגות',export:'הורדת דוח',cleanup_year:'ניקוי סוף שנה',cancel_booking:'ביטול הזמנה של אחר',transfer_accept:'קבלת מקום'};
   async function loadAudit(){
     try{var r=await api('GET','/api/admin/audit');S.audit=r.items}catch(e){flash(e.message)}
     render();
@@ -1115,8 +1149,10 @@
     else if(a==='release-ask'){S.confirmRelease=b.dataset.u;renderList()}
     else if(a==='release-no'){S.confirmRelease=null;renderList()}
     else if(a==='release-yes'){releaseUser(b.dataset.u)}
+    else if(a==='safety-open'){openSafety()}
+    else if(a==='safety-close'){closeSafety()}
     else if(a==='safety-sign'){signSafety()}
-    else if(a==='safety-set'||a==='safety-verify'||a==='safety-revoke'){adminSafety(b.dataset.u,a.slice(7))}
+    else if(a==='safety-set'||a==='safety-revoke'){adminSafety(b.dataset.u,a.slice(7))}
     else if(a==='tf-open'){S.transferFor=b.dataset.g;S.tfEmail='';S.tfErr='';S.tfMsg='';renderList()}
     else if(a==='tf-close'){S.transferFor=null;S.tfErr='';renderList()}
     else if(a==='tf-send'){sendTransfer(b.dataset.g)}

@@ -259,3 +259,9 @@ body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10p
 .stt td.al-no{color:var(--al-no);font-weight:700}
 @media(max-width:700px){.stt{font-size:14px}.stt th,.stt td{padding:6px 7px}}
 #who a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+
+/* חלון כללי ההתנהגות */
+.sf-scroll{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.sf-scroll p{margin:0 0 10px;line-height:1.65;font-size:14.5px}
+.sf-chk{display:flex;gap:10px;align-items:flex-start;line-height:1.5}
+.sf-chk input{margin-top:4px;flex:none;width:18px;height:18px}
