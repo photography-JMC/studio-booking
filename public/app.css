@@ -74,25 +74,28 @@ h1{margin:0;font-family:var(--f-display);font-weight:600;font-size:26px;line-hei
 .day[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .day.today::after{content:"";position:absolute;bottom:6px;width:4px;height:4px;border-radius:50%;background:currentColor}
 .pmap{display:block;width:100%;height:auto}
-.pmap .room{fill:var(--bg);stroke:var(--line);stroke-width:4}
-.pmap .wall{stroke:var(--ink);stroke-width:5;fill:none}
+.pmap .room{fill:#808080;stroke:none}
+.pmap .wall{stroke:#000;stroke-width:5;fill:none}
 .pmap .wall.k{stroke-width:24}
-.pmap .ttl{fill:var(--ink);font:600 36px var(--f-display);text-anchor:middle}
+.pmap .ttl{fill:#fff;font:600 36px var(--f-display);text-anchor:middle}
 .pmap .ttl.back{font-size:30px}
-.pmap .ent{fill:var(--ink);font:700 30px var(--f-body);text-anchor:middle}
+.pmap .ent{fill:#111;font:700 30px var(--f-body);text-anchor:middle}
 .pmap .st{cursor:pointer;outline:none}
-.pmap .st circle{fill:var(--ink);stroke:transparent;stroke-width:8}
-.pmap .st text{fill:var(--surface);font:700 54px var(--f-display);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.pmap .st circle{fill:#000;stroke:transparent;stroke-width:8}
+.pmap .st text{fill:#fff;font:700 54px var(--f-display);text-anchor:middle;dominant-baseline:central;pointer-events:none}
 .pmap .st:hover circle{stroke:var(--accent)}
 .pmap .st:focus-visible circle{stroke:var(--accent-fg)}
 .pmap .st.on circle{fill:var(--accent);stroke:var(--ink)}
 .pmap .st.on text{fill:var(--accent-ink)}
 .pmap .st.full circle{fill:var(--muted);opacity:.6}
 .pmap .st.full.on circle{fill:var(--accent);opacity:.75}
-.pmap.big{min-width:700px}
+.pmap .st text.wt{font-size:68px}.pmap.mini .st text.wt{font-size:72px}
+.pmap .lab text{paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:5px;stroke-linejoin:round}
+.pmap .lab .nm{fill:#fff}.pmap .lab .tm{fill:#e8e8e8}
+.pmap.big{min-width:900px}
 .pmap .lab text{text-anchor:middle;fill:var(--ink);pointer-events:none}
 .pmap .lab .nm{font:700 27px var(--f-body)}
-.pmap .lab .tm{font:500 23px var(--f-body);fill:var(--muted)}
+.pmap .lab .tm{font:500 23px var(--f-body)}
 .bx{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-radius:4px;margin-inline-end:8px;vertical-align:-2px;flex:none}
 [aria-checked="true"] .bx{background:var(--accent);border-color:var(--ink)}
 .hint{font-size:13px;color:var(--muted);margin:6px 0 0}

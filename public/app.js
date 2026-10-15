@@ -644,7 +644,7 @@
       '<button class="btn ghost" data-act="tab" data-v="mine" style="width:100%">לאזור האישי</button></div>';
   }
   /* ----- מפת האולפנים: לחיצה על עמדה בוחרת אותה. גרסה קטנה בצד, גרסה גדולה בחלון קופץ ----- */
-  var PLAN_STATIONS={bf1:[155,205,'1'],bf2:[367,205,'2'],bf3:[596,205,'3'],bf4:[542,833,'4'],bf5:[1221,252,'5'],bb1:[1221,671,'1'],bb2:[1221,997,'2']};
+  var PLAN_STATIONS={bf1:[155,205,'1'],bf2:[367,205,'2'],bf3:[596,205,'3'],bf4:[542,833,'4'],bf5:[1221,252,'5'],bb1:[1221,671,'1'],bb2:[1221,997,'2'],wc:[1718,307,'אולפן ג׳',167],wd:[1718,920,'אולפן ד׳',167]};
   function studioFull(id){
     if(!S.date)return false;
     for(var h=OPEN;h<closeOf(S.date);h++){ if(slotOK(id,S.date,h,1))return false }
@@ -669,7 +669,7 @@
     var extra=list.length>1?' +'+(list.length-1):'';
     var tm=list.length>1?'':'\u2066'+hh(first.from)+'–'+hh(first.to)+'\u2069';
     if(!real.length){extra='';tm=''}
-    var up=id==='bf4'||id==='bb2',y1=up?p[1]-57-40:p[1]+57+34;
+    var rr=p[3]||57,up=id==='bf4'||id==='bb2',y1=up?p[1]-rr-40:p[1]+rr+34;
     var y2=y1+32;
     return '<g class="lab" aria-hidden="true"><text class="nm'+(real.length&&ROLE_KEYS[first.role]?' rc-'+ROLE_KEYS[first.role]:'')+'" x="'+p[0]+'" y="'+y1+'">'+esc(nm)+extra+'</text>'+(tm?'<text class="tm" x="'+p[0]+'" y="'+y2+'">'+tm+'</text>':'')+'</g>';
   }
@@ -680,16 +680,16 @@
       if(!st)return;
       var on=S.studios.indexOf(id)>=0,full=studioFull(id);
       g+='<g class="st'+(on?' on':'')+(full?' full':'')+'" role="button" tabindex="0" data-act="'+(mini?'plan-open':'studio')+'" data-id="'+id+'" aria-pressed="'+on+'" aria-label="'+esc(st.name)+(full?', אין שעות פנויות בתאריך שנבחר':'')+'">'+
-        '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="57"/><text x="'+p[0]+'" y="'+p[1]+'">'+p[2]+'</text></g>';
+        '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(p[3]||57)+'"/><text'+(p[3]?' class="wt"':'')+' x="'+p[0]+'" y="'+p[1]+'">'+p[2]+'</text></g>';
       if(!mini)g+=stationLabel(id,p);
     });
-    return '<svg class="pmap'+(mini?' mini':' big')+'"'+(mini?' data-act="plan-open" style="cursor:pointer"':'')+' viewBox="0 '+(mini?'0 1418 1227':'0 1418 1227')+'" role="group" aria-label="תרשים האולפנים השחורים והעמדות בהם" focusable="false">'+
-      '<path class="room" d="M20 100H1398V1190H757V968H20Z"/>'+
-      '<path class="wall" d="M267 114V350M463 114V350M1016 839H1333"/>'+
-      '<path class="wall k" d="M757 551V1190M957 551H1398M20 968H145M351 968H757M351 815V968"/>'+
-      '<text class="ttl" x="513" y="476">אולפן שחור קדמי</text>'+
-      '<text class="ttl back" x="1015" y="1110">אולפן שחור אחורי</text>'+
-      '<text class="ent" x="248" y="1040">כניסה</text>'+g+'</svg>';
+    return '<svg class="pmap'+(mini?' mini':' big')+'"'+(mini?' data-act="plan-open" style="cursor:pointer"':'')+' viewBox="0 0 2000 1227" role="group" aria-label="תרשים האולפנים והעמדות בהם" focusable="false">'+
+      '<path class="room" d="M0 0H1415V1227H737V982H0Z"/><rect class="room" x="1437" y="0" width="563" height="600"/><rect class="room" x="1437" y="627" width="563" height="600"/>'+
+      '<path class="wall" d="M264 114V350M460 114V350M1013 839H1330"/>'+
+      '<path class="wall k" d="M752 537V1227M954 551H1415M0 968H142M346 968H752M346 802V968"/>'+
+      '<text class="ttl" x="510" y="476">אולפן שחור קדמי</text>'+
+      '<text class="ttl back" x="1010" y="1110">אולפן שחור אחורי</text>'+
+      '<text class="ent" x="235" y="1012">כניסה</text>'+g+'</svg>';
   }
   function miniPlan(){
     return '<div class="miniplan"><h3>מפת האולפנים</h3>'+planSvg(true)+
