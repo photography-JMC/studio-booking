@@ -734,7 +734,7 @@ async function markNoShow(c) {
   return json({ ok: true });
 }
 /* ---------- אישור קריאת הודעת הפרטיות ---------- */
-const PRIVACY_VERSION = '1';
+const PRIVACY_VERSION = '2'; // מעלים כשנוסח ההודעה משתנה, וכולם מאשרים מחדש
 let PRIVACY_READY = false;
 async function ensurePrivacy(env) {
   if (PRIVACY_READY) return;
