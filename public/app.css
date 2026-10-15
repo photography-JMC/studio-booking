@@ -92,7 +92,7 @@ h1{margin:0;font-family:var(--f-display);font-weight:600;font-size:26px;line-hei
 .pmap .st text.wt{font-size:68px}.pmap.mini .st text.wt{font-size:72px}
 .pmap .lab text{paint-order:stroke;stroke:rgba(0,0,0,.6);stroke-width:5px;stroke-linejoin:round}
 .pmap .lab .nm{fill:#fff}.pmap .lab .tm{fill:#e8e8e8}
-.pmap.big{min-width:900px}
+.pmap.big{min-width:700px}
 .pmap .lab text{text-anchor:middle;fill:var(--ink);pointer-events:none}
 .pmap .lab .nm{font:700 27px var(--f-body)}
 .pmap .lab .tm{font:500 23px var(--f-body)}
