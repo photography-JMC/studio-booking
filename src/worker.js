@@ -193,6 +193,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'GET' && path === '/api/admin/export') res = await exportData(c);
   else if (method === 'POST' && path === '/api/admin/cleanup') res = await cleanupYear(c);
   else if (method === 'GET' && path === '/api/admin/audit') res = await auditList(c);
+  else if (method === 'GET' && path === '/api/admin/infra') res = await infraInfo(c);
   else if (method === 'GET' && path === '/api/admin/stats') res = await statsData(c);
   else if (method === 'GET' && path === '/api/admin/allowlist') res = await allowCount(c);
   else if (method === 'POST' && path === '/api/admin/allowlist') res = await allowAdd(c);
@@ -944,6 +945,18 @@ async function cleanupYear(c) {
   ]);
   const n = out.slice(0, 4).reduce((s, r) => s + ((r.meta && r.meta.changes) || 0), 0);
   return json({ ok: true, deleted: n });
+}
+/* אבחון מיקום: באיזה אזור מסד הנתונים עונה, ומאיזה מרכז נתונים של Cloudflare הבקשה הוגשה (למנהלים בלבד) */
+async function infraInfo(c) {
+  await needAdmin(c);
+  const r = await c.env.DB.prepare('SELECT 1 AS x').run();
+  const m = (r && r.meta) || {};
+  const cf = c.request.cf || {};
+  return json({
+    d1: { region: m.served_by_region || null, primary: m.served_by_primary === undefined ? null : m.served_by_primary, ms: m.duration },
+    request: { colo: cf.colo || null, country: cf.country || null, city: cf.city || null, region: cf.region || null },
+    note: 'region מציין את אזור מסד הנתונים שענה לשאילתה. אם primary=true זהו אזור המסד הראשי.',
+  });
 }
 async function auditList(c) {
   await needAdmin(c);
