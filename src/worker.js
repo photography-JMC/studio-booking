@@ -681,7 +681,6 @@ async function markNoShow(c) {
 }
 /* ---------- טופס כללי בטיחות: הצהרה של המשתמש, ואישור או ביטול על ידי מנהל ---------- */
 async function needSafety(env, u) {
-  if (isAdmin(u)) return; // מנהלי המערכת פטורים
   await ensureSafety(env);
   const r = await env.DB.prepare('SELECT 1 AS x FROM safety WHERE user_id = ?').bind(u.id).first();
   if (!r) fail(403, 'safety', 'כדי להזמין אולפן צריך לחתום על טופס כללי הבטיחות וההתנהגות באולפנים ולאשר זאת במערכת.');
