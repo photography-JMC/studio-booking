@@ -3,6 +3,7 @@
 import base64, html, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'public', '_g', 'guide.pdf')
+MAP = base64.b64encode(open(os.path.join(HERE, 'map.jpg'), 'rb').read()).decode()
 LOGO = base64.b64encode(open(os.path.join(HERE, 'logo.jpg'), 'rb').read()).decode()
 URL = 'studio-booking.photography-e89.workers.dev'
 FOOT = 'מערכת הזמנת אולפנים · החוג לתקשורת צילומית'
@@ -86,6 +87,11 @@ pages.append(page('לפני ההזמנה', 'מפת האולפנים מראה מ�
     ('מה כתוב על עמדה', 'שם המזמין והשעות שבהן העמדה תפוסה'),
     ('צבע השם', 'לפי סוג המזמין: סטודנט, מרצה, מתרגל, מדריך או אורח')], cols=4))
 
+pages.append(f'''<section class="pg"><p class="eb">לפני ההזמנה</p><h2>כך נראית מפת האולפנים</h2>
+<div class="mapwrap"><img class="mapimg" src="data:image/jpeg;base64,{MAP}" alt="">
+<div class="mapcap"><b>איך משתמשים</b><p>במסך ההזמנה לוחצים על העגול של העמדה כדי לסמן אותה. אפשר לסמן כמה עמדות יחד, כולל האולפנים הלבנים ג׳ וד׳.</p><p>במפה הגדולה בעמדה תפוסה מופיעים שם המזמין והשעות.</p></div></div>
+<footer>{FOOT}</footer></section>''')
+
 pages.append(page('הזמנת אולפן · שלב 1 מתוך 4', 'בוחרים עמדה באולפן', [
     ('לשונית הזמנה חדשה', 'בראש הדף לוחצים על "הזמנה חדשה"'),
     ('בוחרים עמדה ברשימה', 'לוחצים על שם העמדה. בחירה חדשה ברשימה מבטלת אוטומטית את הבחירה הקודמת'),
@@ -158,6 +164,11 @@ h2{font-size:68px;font-weight:800;margin:14px 0 44px}
 .note h4{color:#ffb814;font-size:30px;margin-bottom:8px}
 .note.red h4{color:#ff7a66}
 .note p{color:#fff;font-size:27px;line-height:1.5}
+.mapwrap{display:flex;gap:40px;align-items:flex-start}
+.mapimg{height:700px;width:auto;border-radius:18px;border:1px solid #eadfc2}
+.mapcap{flex:1;background:#231f20;border-radius:22px;padding:30px 34px;color:#fff}
+.mapcap b{color:#ffb814;font-size:32px;display:block;margin-bottom:12px}
+.mapcap p{font-size:27px;line-height:1.55;margin-bottom:14px}
 footer{position:absolute;bottom:46px;right:110px;color:#8f8777;font-size:23px}
 .dark{background:#231f20;color:#fbf7ec}
 .logo{position:absolute;top:100px;right:110px;width:720px;height:auto}
