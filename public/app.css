@@ -192,7 +192,7 @@ textarea{resize:vertical;min-height:64px}
   .row2{grid-template-columns:1fr}
   .booker{grid-template-columns:minmax(0,1fr)}
   .col+.col{border-inline-start:0;border-top:1px solid var(--line)}
-  .slots{max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+  .slots{max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
   .studios{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .studio{min-height:48px;min-width:0;padding:8px}
   .studio .nm{white-space:normal;min-width:0}

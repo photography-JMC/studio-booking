@@ -559,13 +559,14 @@
     if(S.start!=null&&!rangeOK(S.start,S.dur)){S.start=null;S.anchor=null}
     var sel=S.start!=null;
     html+='<div class="tip"><b>בחירת כמה שעות ברצף</b>'+
+      '<span class="hint"><b>כל כפתור הוא שעה אחת שלמה.</b> להזמנה מ־13:00 עד 15:00 מסמנים שני כפתורים בלבד: 13:00–14:00 ו־14:00–15:00. את 15:00–16:00 לא מסמנים.</span>'+
       '<span>במחשב: לחצו על השעה הראשונה, החזיקו <kbd>Shift</kbd> ולחצו על השעה האחרונה. כל השעות שביניהן ייבחרו. אפשר עד '+md+' שעות ביום הזה. בטלפון: גררו אצבע על השעות שרוצים, או לחצו על השעה הראשונה ואז על האחרונה. אפשר גם להוסיף שעות בכפתורי + ו־−.</span></div>';
     var rows='';
     for(var h=OPEN;h<closeOf(S.date);h++){
       var ok=slotFree(S.date,h),tk=takenAny(S.date,h);
       var inSel=sel&&h>=S.start&&h<S.start+S.dur;
-      if(ok) rows+='<button class="slot" data-act="slot" data-h="'+h+'" aria-pressed="'+inSel+'">'+hh(h)+'</button>';
-      else rows+='<button class="slot" disabled><span class="t">'+hh(h)+'</span>'+(tk?'<span'+(coordNote(S.date,h)?' style="font-size:.8em;color:#ff4d4d;font-weight:700"':'')+'>'+(coordNote(S.date,h)||'תפוס')+'</span>':'')+'</button>';
+      if(ok) rows+='<button class="slot" data-act="slot" data-h="'+h+'" aria-pressed="'+inSel+'">'+hh(h)+'–'+hh(h+1)+'</button>';
+      else rows+='<button class="slot" disabled><span class="t">'+hh(h)+'–'+hh(h+1)+'</span>'+(tk?'<span'+(coordNote(S.date,h)?' style="font-size:.8em;color:#ff4d4d;font-weight:700"':'')+'>'+(coordNote(S.date,h)||'תפוס')+'</span>':'')+'</button>';
     }
     html+='<div class="slots" id="slots">'+rows+'</div>';
     if(S.msg)html+='<p class="err" role="alert">'+esc(S.msg)+'</p>';
