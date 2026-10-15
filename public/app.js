@@ -504,7 +504,7 @@
     return '<div class="col"><p class="eyebrow">אולפני החוג</p>'+
       '<div class="studios" role="group" aria-label="בחירת עמדות">'+
       STUDIOS.map(function(t){var on=S.studios.indexOf(t.id)>=0;return '<button class="studio" role="checkbox" data-act="studio" data-id="'+t.id+'" aria-checked="'+on+'"><span class="nm"><i class="bx" aria-hidden="true"></i>'+esc(t.name)+'</span></button>'}).join('')+
-      '</div><p class="hint">אפשר לבחור כמה עמדות, גם מהמפה. הן יוזמנו יחד באותן שעות.</p>'+
+      '</div><p class="hint">בחירה ברשימה מחליפה את העמדה הקודמת. כדי להזמין כמה עמדות יחד, בחרו אותן במפה (\u0027הגדלת המפה\u0027).</p>'+
       '<div class="detail"><h2>'+(one?esc(one.name):'נבחרו '+sel.length+' עמדות')+'</h2>'+
       (one&&one.desc?'<p>'+esc(one.desc)+'</p>':'')+
       (one&&one.tags&&one.tags.length?'<ul class="tags">'+one.tags.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>':'')+
@@ -1310,7 +1310,8 @@
     else if(a==='plan-close'){closePlan()}
     else if(a==='studio'){
       var sid=b.dataset.id,ix=S.studios.indexOf(sid);
-      if(ix>=0){if(S.studios.length>1)S.studios.splice(ix,1)}
+      if(b.classList&&b.classList.contains('studio')){S.studios=[sid]} /* ברשימה: בחירה אחת, בחירה חדשה מבטלת את הקודמת. כמה עמדות יחד: במפה */
+      else if(ix>=0){if(S.studios.length>1)S.studios.splice(ix,1)}
       else if(S.studios.length<MAX_STATIONS)S.studios.push(sid);
       S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;
       render();refreshModal(sid);
