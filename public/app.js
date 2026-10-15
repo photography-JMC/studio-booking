@@ -497,7 +497,7 @@
   function renderTabs(){
     var t=[['book','הזמנה חדשה'],['mine','האזור שלי']];
     if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')]);t.push(['stats','סטטיסטיקה']);t.push(['safety','כללי התנהגות'])}
-    $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('');
+    $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('')+'<button class="tab tab-privacy" type="button" data-act="privacy-open" aria-haspopup="dialog">הודעת פרטיות</button>';
     $('#who').innerHTML=(S.profile?avatarHTML(S.profile)+'<span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<a class="btn ghost" href="/api/guide" target="_blank" rel="noopener">מדריך</a><a class="btn ghost" href="/api/guide?dl=1" download>הורדת מדריך</a><button class="btn ghost" data-act="logout">התנתקות</button>':'');
   }
   function renderNotice(){

@@ -273,3 +273,6 @@ body.lg .credit{background:rgba(20,20,20,.8);padding:10px 16px;border-radius:10p
 .credit a{color:inherit}
 .pv h3{margin:14px 0 6px;font-size:1.05em}.pv ul{margin:0 0 8px;padding-inline-start:20px}.pv li{margin-bottom:4px}.pv a{color:inherit;text-decoration:underline}
 .sf-scroll.pv{max-height:60vh}
+
+.tab.tab-privacy{background:var(--ink);color:var(--surface);font-weight:700;margin-inline-start:6px}
+.tab.tab-privacy:hover{filter:brightness(.95)}
