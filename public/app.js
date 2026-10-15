@@ -560,7 +560,7 @@
     var sel=S.start!=null;
     html+='<div class="tip"><b>בחירת כמה שעות ברצף</b>'+
       '<span class="hint"><b>כל כפתור הוא שעה אחת שלמה.</b> להזמנה מ־13:00 עד 15:00 מסמנים שני כפתורים בלבד: 13:00–14:00 ו־14:00–15:00. את 15:00–16:00 לא מסמנים.</span>'+
-      '<span>במחשב: לחצו על השעה הראשונה, החזיקו <kbd>Shift</kbd> ולחצו על השעה האחרונה. כל השעות שביניהן ייבחרו. אפשר עד '+md+' שעות ביום הזה. בטלפון: גררו אצבע על השעות שרוצים, או לחצו על השעה הראשונה ואז על האחרונה. אפשר גם להוסיף שעות בכפתורי + ו־−.</span></div>';
+      '<span>במחשב: לחצו על השעה הראשונה, החזיקו <kbd>Shift</kbd> ולחצו על השעה האחרונה. כל השעות שביניהן ייבחרו. אפשר עד '+md+' שעות ביום הזה. בטלפון: לחצו על השעה הראשונה ואז על האחרונה (עד 4 שעות ברצף), או גררו אצבע על השעות. לחיצה על שעה בתוך הבחירה מתחילה בחירה חדשה. אפשר גם להוסיף שעות בכפתורי + ו־−.</span></div>';
     var rows='';
     for(var h=OPEN;h<closeOf(S.date);h++){
       var ok=slotFree(S.date,h),tk=takenAny(S.date,h);
@@ -1323,10 +1323,12 @@
     else if(a==='slot'){
       var h=Number(b.dataset.h);
       var touch=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches;
-      if((e.shiftKey||(touch&&S.start!=null&&S.dur===1&&h!==S.start))&&S.anchor!=null){
+      /* במגע: לחיצה על שעה מחוץ לבחירה הנוכחית מרחיבה אותה עד השעה הזאת (עד המכסה); לחיצה בתוך הבחירה מתחילה בחירה חדשה */
+      var outside=S.start!=null&&(h<S.start||h>=S.start+S.dur);
+      if((e.shiftKey||(touch&&outside))&&S.anchor!=null){
         var lo=Math.min(S.anchor,h),n=Math.abs(h-S.anchor)+1;
         if(n>maxDur()){S.msg='אפשר לבחור עד '+maxDur()+' שעות ברצף ביום הזה.'}
-        else if(!rangeOK(lo,n)){S.msg='בטווח שבחרתם יש שעה תפוסה או שהמכללה סגורה בה.'}
+        else if(!rangeOK(lo,n)){if(touch){S.anchor=h;S.start=h;S.dur=1;S.msg=''}else S.msg='בטווח שבחרתם יש שעה תפוסה או שהמכללה סגורה בה.'}
         else{S.start=lo;S.dur=n;S.msg=''}
       } else {S.anchor=h;S.start=h;S.dur=1;S.msg=''}
       renderSide();
