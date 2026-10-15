@@ -1,4 +1,4 @@
-import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE } from './config.js';
+import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE, SAFETY_FORM_URL } from './config.js';
 import { json, HttpError, fail, randomHex, israelNow, validDate, addDays, absMin, nowAbs, epochOf, blockedReason, closeOf, isAdminEmail, rateLimit, sha256Hex } from './util.js';
 import { verifyGoogleToken, newSessionToken, hashToken, cookieHeader, readCookie, SESSION_MS } from './auth.js';
 
@@ -55,6 +55,13 @@ async function ensureYear(env) {
   if (YEAR_READY) return;
   try { await env.DB.prepare("ALTER TABLE bookings ADD COLUMN study_year TEXT NOT NULL DEFAULT ''").run(); } catch (e) { /* העמודה כבר קיימת */ }
   YEAR_READY = true;
+}
+// טבלת הצהרות על חתימה על טופס הבטיחות נוצרת בעת הצורך (פעם אחת לכל מופע של השרת)
+let SAFETY_READY = false;
+async function ensureSafety(env) {
+  if (SAFETY_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS safety (user_id TEXT PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL DEFAULT \'\', checked_at INTEGER, checked_by TEXT)').run();
+  SAFETY_READY = true;
 }
 let PEOPLE_READY = false;
 async function ensurePeople(env) {
@@ -156,6 +163,8 @@ async function handleApi(request, env, url, ctx) {
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})\/(accept|decline)$/)) && method === 'POST') res = await answerTransfer(c, m[1], m[2]);
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await dropTransfer(c, m[1]);
   else if (method === 'PUT' && path === '/api/profile') res = await saveProfile(c);
+  else if (method === 'POST' && path === '/api/safety/sign') res = await safetySign(c);
+  else if (method === 'POST' && path === '/api/admin/safety') res = await safetyAdmin(c);
   else if (method === 'GET' && path === '/api/people') res = await peopleDir(c);
   else if (method === 'GET' && path === '/api/guide') res = await guideFile(c);
   else if (method === 'DELETE' && path === '/api/profile') res = await deleteProfile(c);
@@ -182,7 +191,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, safetyUrl: SAFETY_FORM_URL,
   });
 }
 
@@ -233,6 +242,7 @@ async function getState(c) {
   if (since !== null && Number(since) === ver) return json({ unchanged: true, v: ver });
   const today = israelNow().date;
   const from = admin ? addDays(today, -RULES.REVIEW_DAYS) : today;
+  await ensureSafety(env);
   const q = (sql, ...args) => env.DB.prepare(sql).bind(...args);
   const out = await env.DB.batch([
     q('SELECT * FROM bookings WHERE date >= ?', from),
@@ -243,6 +253,7 @@ async function getState(c) {
     admin ? q('SELECT id,name,email,role,status,created_at FROM users WHERE profile_done = 1') : q('SELECT 1 WHERE 0'),
     admin ? q('SELECT bp.gid AS gid, u.name AS name FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid IN (SELECT gid FROM bookings WHERE date >= ?) ORDER BY u.name', from)
           : q('SELECT bp.gid AS gid, u.name AS name FROM booking_people bp JOIN users u ON u.id = bp.uid WHERE bp.gid IN (SELECT gid FROM bookings WHERE user_id = ?) ORDER BY u.name', u.id),
+    admin ? q('SELECT * FROM safety') : q('SELECT * FROM safety WHERE user_id = ?', u.id),
   ]);
   const people = {}; for (const r of out[6].results) (people[r.gid] = people[r.gid] || []).push(r.name);
   const bk = (r) => {
@@ -257,9 +268,10 @@ async function getState(c) {
   const releases = {}; for (const r of out[3].results) releases[r.user_id] = { uid: r.user_id, at: r.at, by: r.by_name };
   const transfers = {}; for (const r of out[4].results) transfers[r.gid] = { gid: r.gid, fromUid: r.from_uid, fromName: r.from_name, toEmail: r.to_email, status: r.status, date: r.date, from: r.from_hour, to: r.to_hour, studios: parseJson(r.studios), createdAt: r.created_at };
   const members = {}; for (const r of out[5].results) members[r.id] = { uid: r.id, name: r.name, email: r.email, role: r.role, status: r.status, createdAt: r.created_at };
+  const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, checked: !!r.checked_at, checkedBy: r.checked_by || '' };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
-  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '' }, profile, member, bookings, mine, noshows, releases, transfers, members, people });
+  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] || null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
 }
 
 /* ---------- הזמנות ---------- */
@@ -291,6 +303,7 @@ async function createBooking(c) {
   const b = await readBody(request);
   if (!u.profile_done) fail(403, 'no_profile', 'כדי להזמין צריך להשלים הרשמה.');
   if (!canBook(u)) fail(403, 'not_approved', 'ההרשמה שלך עדיין לא אושרה על ידי מנהל.');
+  await needSafety(env, u);
   if ((await strikesOf(env, u.id)) >= RULES.MAX_STRIKES) fail(403, 'blocked', 'ההזמנה חסומה עבורך עקב אי-הגעות. לשחרור פנו למנהלי המערכת.');
   const ids = Array.isArray(b.studios) ? [...new Set(b.studios.map(String))] : [];
   if (!ids.length || ids.length > RULES.MAX_STATIONS || ids.some((i) => !STUDIOS.some((s) => s.id === i))) fail(400, 'studios', 'בחירת העמדות לא תקינה.');
@@ -409,6 +422,7 @@ async function answerTransfer(c, gid, action) {
     return json({ ok: true });
   }
   if (!canBook(u)) fail(403, 'not_approved', 'כדי לקבל מקום צריך שמנהל יאשר את ההרשמה שלך.');
+  await needSafety(env, u);
   if ((await strikesOf(env, u.id)) >= RULES.MAX_STRIKES) fail(403, 'blocked', 'החשבון שלך חסום מהזמנת אולפנים ולכן אי אפשר לקבל מקום.');
   const rows = (await env.DB.prepare('SELECT * FROM bookings WHERE gid = ?').bind(gid).all()).results;
   if (!rows.length || rows.some((r) => r.user_id !== t.from_uid)) {
@@ -631,7 +645,9 @@ async function purgeMember(c, id) {
   if (isAdmin(t)) fail(400, 'admin', 'אי אפשר למחוק מנהל מערכת.');
   if (t.status !== 'removed' && t.status !== 'rejected') fail(400, 'status', 'אפשר למחוק לגמרי רק משתמש שהוסר או שלא אושר.');
   const today = israelNow().date;
+  await ensureSafety(env);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM safety WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM bookings WHERE user_id = ? AND date >= ?').bind(id, today),
     env.DB.prepare('DELETE FROM transfers WHERE from_uid = ?').bind(id),
     env.DB.prepare('DELETE FROM noshows WHERE user_id = ?').bind(id),
@@ -661,6 +677,43 @@ async function markNoShow(c) {
       .bind(gid, g.user_id, rows[0].name, rows[0].email, g.date, JSON.stringify(g.studios), g.lo, g.hi + 1, epochOf(g.date, g.hi + 1), a.name || a.email, Date.now()),
     audit(env, a, 'noshow_mark', rows[0].email, `${g.date} ${g.lo}-${g.hi + 1}`), bump(env),
   ]);
+  return json({ ok: true });
+}
+/* ---------- טופס כללי בטיחות: הצהרה של המשתמש, ואישור או ביטול על ידי מנהל ---------- */
+async function needSafety(env, u) {
+  if (isAdmin(u)) return; // מנהלי המערכת פטורים
+  await ensureSafety(env);
+  const r = await env.DB.prepare('SELECT 1 AS x FROM safety WHERE user_id = ?').bind(u.id).first();
+  if (!r) fail(403, 'safety', 'כדי להזמין אולפן צריך לחתום על טופס כללי הבטיחות וההתנהגות באולפנים ולאשר זאת במערכת.');
+}
+async function safetySign(c) {
+  const { env } = c;
+  const u = await needUser(c);
+  await rateLimit(env, 'safe:' + u.id, 10, 600);
+  if (!u.profile_done) fail(403, 'no_profile', 'יש להשלים הרשמה לפני כן.');
+  await ensureSafety(env);
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO safety (user_id,at,kind,by_name) VALUES (?,?, 'self', ?)").bind(u.id, Date.now(), u.name || u.email),
+    audit(env, u, 'safety_self', u.email), bump(env),
+  ]);
+  return json({ ok: true });
+}
+async function safetyAdmin(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const b = await readBody(request);
+  const uid = String(b.uid || ''), act = String(b.action || '');
+  if (!['verify', 'set', 'revoke'].includes(act)) fail(400, 'action', 'פעולה לא תקינה.');
+  const t = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(uid).first();
+  if (!t) fail(404, 'gone', 'המשתמש לא נמצא.');
+  await ensureSafety(env);
+  const now = Date.now(), by = a.name || a.email;
+  const st = [];
+  if (act === 'revoke') st.push(env.DB.prepare('DELETE FROM safety WHERE user_id = ?').bind(uid));
+  else if (act === 'set') st.push(env.DB.prepare("INSERT INTO safety (user_id,at,kind,by_name,checked_at,checked_by) VALUES (?,?, 'admin', ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET checked_at = excluded.checked_at, checked_by = excluded.checked_by").bind(uid, now, by, now, by));
+  else st.push(env.DB.prepare('UPDATE safety SET checked_at = ?, checked_by = ? WHERE user_id = ?').bind(now, by, uid));
+  st.push(audit(env, a, 'safety_' + act, t.email), bump(env));
+  await env.DB.batch(st);
   return json({ ok: true });
 }
 async function releaseUser(c) {

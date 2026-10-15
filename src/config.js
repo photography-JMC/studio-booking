@@ -49,3 +49,6 @@ export const STUDY_YEARS = ['שנה א׳', 'שנה ב׳', 'שנה ג׳', 'שנה
 export const YEARS = ['סטודנט', 'מרצה', 'מתרגל', 'מדריך', 'אורח'];
 export const PURPOSES = ['תרגיל קורס', 'פרויקט גמר', 'פרויקט אישי', 'צילום לתיק עבודות', 'האקתון', 'אחר'];
 export const TIMEZONE = 'Asia/Jerusalem';
+
+// טופס כללי הבטיחות וההתנהגות באולפנים. אי אפשר להזמין אולפן בלי לחתום עליו.
+export const SAFETY_FORM_URL = 'https://forms.gle/ptJEAQR5wxFNCYn76';

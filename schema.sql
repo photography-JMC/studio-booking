@@ -114,3 +114,13 @@ CREATE TABLE IF NOT EXISTS meta (
   v INTEGER NOT NULL
 );
 INSERT OR IGNORE INTO meta (k, v) VALUES ('ver', 1);
+
+-- הצהרה על חתימה על טופס כללי הבטיחות. הטבלה נוצרת גם אוטומטית בשרת בעת הצורך.
+CREATE TABLE IF NOT EXISTS safety (
+  user_id    TEXT PRIMARY KEY,
+  at         INTEGER NOT NULL,
+  kind       TEXT NOT NULL,                 -- self (הצהרה של המשתמש) / admin (סומן על ידי מנהל)
+  by_name    TEXT NOT NULL DEFAULT '',
+  checked_at INTEGER,                       -- אישור מנהל מול תשובות הטופס
+  checked_by TEXT
+);
