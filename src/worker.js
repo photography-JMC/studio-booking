@@ -171,6 +171,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'POST' && path === '/api/auth/logout') res = await logout(c);
   else if (method === 'GET' && path === '/api/state') res = await getState(c);
   else if (method === 'POST' && path === '/api/bookings') res = await createBooking(c);
+  else if ((m = path.match(/^\/api\/bookings\/([a-f0-9]{8,32})$/)) && method === 'PUT') res = await editBooking(c, m[1]);
   else if ((m = path.match(/^\/api\/bookings\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await cancelBooking(c, m[1]);
   else if (method === 'POST' && path === '/api/transfers') res = await sendTransfer(c);
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})\/(accept|decline)$/)) && method === 'POST') res = await answerTransfer(c, m[1], m[2]);
@@ -382,6 +383,37 @@ async function createBooking(c) {
       `${oneLine(u.name)} (${oneLine(u.role)}) הזמין/ה אולפן\n${names}\nתאריך: ${dd}/${mm}/${yy}\nשעות: ${String(start).padStart(2, '0')}:00–${String(start + dur).padStart(2, '0')}:00\nמטרה: ${oneLine(b.purpose)}, ${people} משתתפים\n\nhttps://studio-booking.photography-e89.workers.dev`);
   }
   return json({ ok: true, gid });
+}
+
+async function editBooking(c, gid) {
+  const { env, request } = c;
+  const u = await needUser(c);
+  await rateLimit(env, 'w:' + u.id, 40, 60);
+  const b = await readBody(request);
+  const rows = (await env.DB.prepare('SELECT * FROM bookings WHERE gid = ?').bind(gid).all()).results;
+  if (!rows.length) fail(404, 'gone', 'ההזמנה כבר לא קיימת.');
+  const g = groupOf(rows), admin = isAdmin(u);
+  if (g.user_id !== u.id && !admin) fail(403, 'forbidden', 'אפשר לערוך רק הזמנה שלך.');
+  if (absMin(g.date, g.hi + 1) <= nowAbs()) fail(400, 'over', 'ההזמנה כבר הסתיימה.');
+  if (!PURPOSES.includes(b.purpose)) fail(400, 'purpose', 'נא לבחור מטרת שימוש.');
+  const cap = g.studios.reduce((a, i) => a + ((STUDIOS.find((s) => s.id === i) || { cap: 1 }).cap), 0);
+  const people = b.people;
+  if (!Number.isInteger(people) || people < 1 || people > cap) fail(400, 'people', `מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-${cap}.`);
+  await ensurePeople(env);
+  const np = (await env.DB.prepare('SELECT COUNT(*) AS n FROM booking_people WHERE gid = ?').bind(gid).first()).n;
+  if (np ? people !== np + 1 : false) fail(400, 'people', 'בהזמנה יש משתתפים עם שמות, ולכן מספר המשתתפים נקבע לפיהם. כדי לשנות אותם בטלו והזמינו מחדש.');
+  if (!np && people !== 1 && b.solo === true) fail(400, 'people', 'בחרתם לעבוד לבד: מספר המשתתפים הוא 1.');
+  const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
+  await ensureYear(env);
+  let studyYear = rows[0].study_year || '';
+  if (rows[0].role === 'סטודנט') {
+    if (!STUDY_YEARS.includes(b.studyYear)) fail(400, 'study_year', 'סטודנטים צריכים לציין שנת לימוד.');
+    studyYear = b.studyYear;
+  }
+  const st = [env.DB.prepare('UPDATE bookings SET purpose = ?, people = ?, notes = ?, study_year = ? WHERE gid = ?').bind(b.purpose, people, notes, studyYear, gid), bump(env)];
+  if (g.user_id !== u.id) st.push(audit(env, u, 'edit_booking', rows[0].email, `${g.date} ${g.lo}-${g.hi + 1}`));
+  await env.DB.batch(st);
+  return json({ ok: true });
 }
 
 async function cancelBooking(c, gid) {

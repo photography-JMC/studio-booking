@@ -250,6 +250,36 @@
     var t;try{t=await api('GET','/api/safety/text')}catch(e){flash(e.message);return}
     showSafety(t,false);
   }
+  function editModalHTML(){
+    var e=S.edit,sy=STUDY_YEARS;
+    return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ed-h">'+
+      '<div class="modal-head"><h2 id="ed-h">עריכת הזמנה</h2><button class="btn ghost" data-act="edit-close">סגירה</button></div>'+
+      '<p class="lbl" style="margin:0">'+esc(namesOf(e.studios))+' · '+esc(fmtLong(parse(e.date)))+' · '+rng(e.from,e.to)+'. כדי לשנות מועד או עמדה, בטלו והזמינו מחדש.</p>'+
+      '<div class="field"><label class="lbl" for="ed-purpose">מטרת השימוש</label><select id="ed-purpose" data-t="editPurpose">'+PURPOSES.map(function(y){return '<option'+(e.purpose===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>'+
+      '<div class="field"><label class="lbl" for="ed-people">מספר משתתפים</label><input id="ed-people" type="number" min="1" data-t="editPeople" value="'+esc(String(e.people))+'"></div>'+
+      (e.role==='סטודנט'?'<div class="field"><label class="lbl" for="ed-year">שנת לימוד</label><select id="ed-year" data-t="editYear">'+sy.map(function(y){return '<option'+(e.studyYear===y?' selected':'')+'>'+esc(y)+'</option>'}).join('')+'</select></div>':'')+
+      '<div class="field"><label class="lbl" for="ed-notes">הערות</label><textarea id="ed-notes" rows="3" maxlength="300" data-t="editNotes">'+esc(e.notes||'')+'</textarea></div>'+
+      '<p class="err" id="ed-err" role="alert" style="margin:0">'+esc(e.err||'')+'</p>'+
+      '<div class="acts"><button class="btn" data-act="edit-save"'+(e.busy?' disabled':'')+'>שמירה</button><button class="btn ghost" data-act="edit-close">ביטול</button></div></div>';
+  }
+  function openEdit(gid){
+    var g=groups().filter(function(x){return x.gid===gid})[0];if(!g)return;
+    var m=$('#modal');if(!m)return;
+    var mine=g.uid===S.uid;
+    S.edit={gid:gid,studios:g.studios,date:g.date,from:g.from,to:g.to,purpose:g.purpose,people:g.people,notes:g.notes||'',studyYear:g.studyYear||STUDY_YEARS[0]||'',role:mine&&S.profile?S.profile.year:(g.studyYear?'סטודנט':''),err:'',busy:false};
+    m.innerHTML=editModalHTML();m.hidden=false;
+  }
+  function closeEdit(){S.edit=null;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
+  async function saveEdit(){
+    var e=S.edit;if(!e||e.busy)return;
+    var n=parseInt(e.people,10);
+    if(!(n>=1)){e.err='נא להזין מספר משתתפים.';return $('#ed-err').textContent=e.err}
+    e.busy=true;e.err='';
+    try{
+      await api('PUT','/api/bookings/'+e.gid,{purpose:e.purpose,people:n,notes:e.notes,studyYear:e.studyYear});
+      closeEdit();await forceRefresh();renderList();flash('ההזמנה עודכנה.');
+    }catch(x){e.busy=false;e.err=x.message||'השמירה לא הצליחה.';var el=$('#ed-err');if(el)el.textContent=e.err}
+  }
   function closeSafety(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
   async function signSafety(){
     if(S.sfBusy||!S.sfRead||!S.sfText)return;
@@ -723,6 +753,7 @@
     var act='';
     if(S.confirmCancel===g.gid) act='<button class="btn danger" data-act="cancel-yes" data-g="'+g.gid+'">כן, לבטל</button><button class="btn ghost" data-act="cancel-no">השארת ההזמנה</button>';
     else if(can) act='<button class="btn ghost" data-act="cancel" data-g="'+g.gid+'">ביטול</button>';
+    if((mine||isAdmin())&&S.confirmCancel!==g.gid) act='<button class="btn ghost" data-act="edit-open" data-g="'+g.gid+'">עריכת הזמנה</button>'+act;
     var tfx='';
     if(mine&&!all&&S.confirmCancel!==g.gid){
       var tr=S.transfers[g.gid];
@@ -1249,6 +1280,9 @@
     else if(a==='sf-export'){sfExport()}
     else if(a==='safety-open'){openSafety()}
     else if(a==='safety-close'){closeSafety()}
+    else if(a==='edit-open'){openEdit(b.dataset.g)}
+    else if(a==='edit-close'){closeEdit()}
+    else if(a==='edit-save'){saveEdit()}
     else if(a==='safety-sign'){signSafety()}
     else if(a==='safety-set'||a==='safety-revoke'){adminSafety(b.dataset.u,a.slice(7))}
     else if(a==='tf-open'){S.transferFor=b.dataset.g;S.tfEmail='';S.tfErr='';S.tfMsg='';renderList()}
@@ -1324,6 +1358,7 @@
       else if(sk==='period'){if(e.type==='change'){S.st.period=t.value;var pr=stPeriod(t.value);if(pr){S.st.from=pr[0];S.st.to=pr[1]}else{S.st.from='';S.st.to=''}renderStats();stLoad()}}
       else if(e.type==='change'){S.st[sk]=t.value;if(sk==='from'||sk==='to')S.st.period='';stLoad();if(sk==='from'||sk==='to'){var pe=$('#st-period');if(pe)pe.value=''}}
       return}
+    if(t.id&&t.id.indexOf('ed-')===0&&S.edit){var ek={'ed-purpose':'purpose','ed-people':'people','ed-year':'studyYear','ed-notes':'notes'}[t.id];if(ek)S.edit[ek]=t.value;return}
     if(t.id==='sf-q'){S.sfQ=t.value;var sl=$('#sf-list');if(sl)sl.innerHTML=sfListHTML();return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
