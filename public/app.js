@@ -205,8 +205,8 @@
   function isBlocked(uid){return !!uid&&strikes(uid)>=MAX_STRIKES}
   /* ----- אישור מנהל לפני הזמנה ----- */
   function canBook(){return isAdmin()||!!(S.member&&S.member.status==='approved')}
-  /* טופס כללי בטיחות: בלי הצהרת חתימה אי אפשר להזמין (גם מנהלי מערכת) */
-  function needSafety(){return !S.safety}
+  /* טופס כללי בטיחות: בלי הצהרת חתימה אי אפשר להזמין (מנהלי מערכת פטורים) */
+  function needSafety(){return !isAdmin()&&!S.safety}
   function safetyHTML(){
     return '<div class="blocked" role="status"><h3>לפני ההזמנה הראשונה: טופס כללי בטיחות והתנהגות</h3>'+
       '<p>אי אפשר להזמין אולפן בלי לחתום על טופס כללי הבטיחות וההתנהגות באולפנים.</p>'+
@@ -252,7 +252,7 @@
       else if(S.confirmRemove===m.uid)acts='<button class="btn danger" data-act="mem-rm-yes" data-u="'+u+'">כן, להסיר</button><button class="btn ghost" data-act="mem-rm-no">ביטול</button>';
       else{
         var sfActs='';
-        if(st==='approved'||isAdminEmail(m.email)){
+        if(st==='approved'&&!isAdminEmail(m.email)){
           if(!sf)sfActs='<button class="btn ghost" data-act="safety-set" data-u="'+u+'">סימון כחתם על טופס הבטיחות</button>';
           else{if(!sf.checked)sfActs='<button class="btn" data-act="safety-verify" data-u="'+u+'">אישור חתימה (נבדק בטופס)</button>';sfActs+='<button class="btn ghost" data-act="safety-revoke" data-u="'+u+'">ביטול חתימה</button>'}
         }
@@ -264,7 +264,7 @@
         if(st!=='removed'&&!isAdminEmail(m.email))acts+='<button class="btn ghost" data-act="mem-rm" data-u="'+u+'">הסרה</button>';
         acts=sfActs+acts;
       }
-      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span>'+((st==='approved'||isAdminEmail(m.email))?' · <span class="'+(sf&&sf.checked?'lbl':'tag-bl')+'">'+(!sf?'לא חתם על טופס הבטיחות':sf.checked?'חתימה על טופס הבטיחות אושרה':sf.kind==='admin'?'סומן כחתם':'הצהיר שחתם, ממתין לבדיקה')+'</span>':'')+'</h3><p>'+esc(m.email||'')+(m.role?' · '+roleChip(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
+      return '<div class="card item"><div><h3>'+esc(m.name||'')+' · <span class="'+(st==='pending'||st==='removed'?'tag-bl':'lbl')+'">'+tag[st]+'</span>'+(st==='approved'&&!isAdminEmail(m.email)?' · <span class="'+(sf&&sf.checked?'lbl':'tag-bl')+'">'+(!sf?'לא חתם על טופס הבטיחות':sf.checked?'חתימה על טופס הבטיחות אושרה':sf.kind==='admin'?'סומן כחתם':'הצהיר שחתם, ממתין לבדיקה')+'</span>':'')+'</h3><p>'+esc(m.email||'')+(m.role?' · '+roleChip(m.role):'')+'</p>'+(S.confirmRemove===m.uid?'<p class="lbl tfnote">ההסרה חוסמת הזמנות ומבטלת את כל ההזמנות העתידיות של '+esc(m.name||'המשתמש')+'.</p>':'')+'</div><div class="acts">'+acts+'</div></div>'}).join('')+'</div>';
   }
 
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
