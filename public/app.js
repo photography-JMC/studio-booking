@@ -60,7 +60,7 @@
     if(st.me.suggest&&!S.reg.name)S.reg.name=st.me.suggest;
     S.listRole=st.me.listRole||'';if(S.listRole)S.reg.year=S.listRole;
     S.bookings=st.bookings||{};S.mine=st.mine||{};S.noshows=st.noshows||{};S.releases=st.releases||{};S.transfers=st.transfers||{};S.members=st.members||{};S.people=st.people||{};
-    S.member=st.member;S.memberLoaded=true;S.safety=st.me.safety||null;S.safetyMap=st.safety||{};
+    S.member=st.member;S.memberLoaded=true;S.safety=st.me.safety||null;S.privacyOk=!!st.me.privacy;S.safetyMap=st.safety||{};
     var pChanged=JSON.stringify(st.profile)!==JSON.stringify(S.profile)||!S.profileLoaded;
     S.profileLoaded=true;
     if(!S.regBusy&&!S.editing)S.profile=st.profile;
@@ -282,19 +282,24 @@
   }
   /* ----- הודעת פרטיות ----- */
   var PRIVACY_URL='https://www.jmc.ac.il/%D7%9E%D7%93%D7%99%D7%A0%D7%99%D7%95%D7%AA-%D7%A4%D7%A8%D7%98%D7%99%D7%95%D7%AA/';
-  function privacyHTML(){
+  function privacyHTML(must){
     return '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pv-h">'+
-      '<div class="modal-head"><h2 id="pv-h">הודעת פרטיות</h2><button class="btn ghost" data-act="privacy-close">סגירה</button></div>'+
+      '<div class="modal-head"><h2 id="pv-h">הודעת פרטיות</h2>'+(must?'':'<button class="btn ghost" data-act="privacy-close">סגירה</button>')+'</div>'+
+      (must?'<p class="banner" style="margin:0">כדי להמשיך להשתמש במערכת צריך לקרוא את ההודעה וללחוץ "הבנתי".</p>':'')+
       '<div class="pv">'+
       '<p>המערכת שומרת שם, מייל מוסדי, תפקיד ופרטי הזמנות, לצורך ניהול ההזמנות בלבד.</p>'+
       '<p>שם המזמין גלוי למשתמשים מאושרים. מייל והערות גלויים רק לכם ולמנהלי המערכת.</p>'+
       '<p>המידע אינו מועבר מחוץ למכללה, מלבד Google (כניסה) ו-Cloudflare (אחסון).</p>'+
       '<p>לעיון, תיקון או מחיקה: <span dir="ltr">yoramrs@edu.jmc.ac.il</span></p>'+
       '<p><a href="'+PRIVACY_URL+'" target="_blank" rel="noopener noreferrer">מדיניות הפרטיות של המכללה</a></p>'+
-      '</div><div class="acts"><button class="btn" data-act="privacy-close">הבנתי</button></div></div>';
+      '</div><div class="acts"><button class="btn" data-act="'+(must?'privacy-ack':'privacy-close')+'">הבנתי</button></div></div>';
   }
-  function openPrivacy(){var m=$('#modal');if(!m)return;S.sfOpen=true;m.innerHTML=privacyHTML();m.hidden=false;var b=m.querySelector('.btn');if(b)b.focus()}
-  function closePrivacy(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
+  function openPrivacy(must){var m=$('#modal');if(!m)return;S.sfOpen=true;S.pvMust=!!must;m.innerHTML=privacyHTML(!!must);m.hidden=false;var b=m.querySelector('.btn[data-act^="privacy"]');if(b)b.focus()}
+  function closePrivacy(){if(S.pvMust&&!S.privacyOk)return;S.pvMust=false;S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
+  async function ackPrivacy(){
+    try{await api('POST','/api/privacy/ack',{});S.privacyOk=true;S.pvMust=false;closePrivacy();await forceRefresh()}
+    catch(e){var m=$('#modal');if(m)m.querySelector('.modal-card').insertAdjacentHTML('afterbegin','<p class="err" role="alert">'+esc(e.message||'השמירה לא הצליחה. נסו שוב.')+'</p>')}
+  }
   function closeSafety(){S.sfOpen=false;var m=$('#modal');if(m){m.hidden=true;m.innerHTML=''}}
   async function signSafety(){
     if(S.sfBusy||!S.sfRead||!S.sfText)return;
@@ -737,6 +742,7 @@
     if(el&&el.focus)el.focus();
   }
   function closePlan(noFocus){
+    if(S.pvMust&&!S.privacyOk)return;
     var m=$('#modal');if(!m||m.hidden)return;
     S.sfOpen=false;
     m.hidden=true;m.innerHTML='';
@@ -1182,6 +1188,7 @@
       '<div><button class="btn" data-act="login">כניסה מחדש</button></div></div>';
   }
   function logout(){
+    S.pvMust=false;S.privacyOk=false;
     closePlan(true);
     clearTimeout(pollTimer);
     var done=function(){location.reload()};
@@ -1197,6 +1204,7 @@
     renderTabs(); renderNotice();
     if(needReg()){renderReg();return}
     if(S.tab==='book')renderBook(); else renderList();
+    if(S.uid&&S.memberLoaded&&!S.privacyOk&&!S.pvMust)openPrivacy(true);
   }
 
   /* ----- Profile storage ----- */
@@ -1293,7 +1301,8 @@
     else if(a==='sf-export'){sfExport()}
     else if(a==='safety-open'){openSafety()}
     else if(a==='safety-close'){closeSafety()}
-    else if(a==='privacy-open'){openPrivacy()}
+    else if(a==='privacy-open'){openPrivacy(false)}
+    else if(a==='privacy-ack'){ackPrivacy()}
     else if(a==='privacy-close'){closePrivacy()}
     else if(a==='edit-open'){openEdit(b.dataset.g)}
     else if(a==='edit-close'){closeEdit()}
@@ -1417,7 +1426,7 @@
     },true);
   })();
   document.addEventListener('keydown',function(e){
-    if(e.key==='Escape')closePlan();
+    if(e.key==='Escape'&&!(S.pvMust&&!S.privacyOk))closePlan();
     if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('st')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}
   });
   document.addEventListener('click',function(e){var m=$('#modal');if(m&&!m.hidden&&e.target===m)closePlan()});

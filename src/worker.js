@@ -179,6 +179,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'PUT' && path === '/api/profile') res = await saveProfile(c);
   else if (method === 'GET' && path === '/api/safety/text') res = await safetyText(c);
   else if (method === 'POST' && path === '/api/safety/sign') res = await safetySign(c);
+  else if (method === 'POST' && path === '/api/privacy/ack') res = await privacyAck(c);
   else if (method === 'GET' && path === '/api/admin/safety/text') res = await safetyAdminText(c);
   else if (method === 'POST' && path === '/api/admin/safety/publish') res = await safetyPublish(c);
   else if (method === 'POST' && path === '/api/admin/safety') res = await safetyAdmin(c);
@@ -254,6 +255,7 @@ async function getState(c) {
   const admin = isAdmin(u);
   const listed = admin ? null : await allowEntry(env, u.email);
   await ensurePeople(env);
+  const privOk = await privacyOk(env, u.id);
   const ver = (await env.DB.prepare("SELECT v FROM meta WHERE k = 'ver'").first()).v;
   const since = url.searchParams.get('v');
   if (since !== null && Number(since) === ver) return json({ unchanged: true, v: ver });
@@ -288,7 +290,7 @@ async function getState(c) {
   const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, name: r.signed_name || '', version: r.version, valid: r.version === curSafety.version };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
-  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] && safetyMap[u.id].valid ? safetyMap[u.id] : null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
+  return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, privacy: privOk, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] && safetyMap[u.id].valid ? safetyMap[u.id] : null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
 }
 
 /* ---------- הזמנות ---------- */
@@ -649,6 +651,7 @@ async function saveProfile(c) {
     bump(env),
   ];
   if (first) st.push(audit(env, u, 'register', u.email));
+  if (first) { await ensurePrivacy(env); st.push(ackStmt(env, u.id)); }
   await env.DB.batch(st);
   if (first && !isAdmin(u) && status === 'pending') notify(c, `נרשם/ה חדש/ה ממתין/ה לאישור: ${oneLine(name)}`,
     `${oneLine(name)} (${oneLine(role)}) נרשם/ה למערכת הזמנת האולפנים וממתין/ה לאישור.\n\nלאישור: לשונית "ניהול" באתר\nhttps://studio-booking.photography-e89.workers.dev`);
@@ -692,11 +695,13 @@ async function purgeMember(c, id) {
   const t = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
   if (!t) fail(404, 'gone', 'המשתמש לא נמצא.');
   if (isAdmin(t)) fail(400, 'admin', 'אי אפשר למחוק מנהל מערכת.');
+  await ensurePrivacy(env);
   if (t.status !== 'removed' && t.status !== 'rejected') fail(400, 'status', 'אפשר למחוק לגמרי רק משתמש שהוסר או שלא אושר.');
   const today = israelNow().date;
   await ensureSafety(env);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM safety WHERE user_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM privacy_ack WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM bookings WHERE user_id = ? AND date >= ?').bind(id, today),
     env.DB.prepare('DELETE FROM transfers WHERE from_uid = ?').bind(id),
     env.DB.prepare('DELETE FROM noshows WHERE user_id = ?').bind(id),
@@ -728,8 +733,29 @@ async function markNoShow(c) {
   ]);
   return json({ ok: true });
 }
+/* ---------- אישור קריאת הודעת הפרטיות ---------- */
+const PRIVACY_VERSION = '1';
+let PRIVACY_READY = false;
+async function ensurePrivacy(env) {
+  if (PRIVACY_READY) return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS privacy_ack (user_id TEXT PRIMARY KEY, version TEXT NOT NULL, at INTEGER NOT NULL)').run();
+  PRIVACY_READY = true;
+}
+const ackStmt = (env, uid) => env.DB.prepare('INSERT OR REPLACE INTO privacy_ack (user_id, version, at) VALUES (?,?,?)').bind(uid, PRIVACY_VERSION, Date.now());
+async function privacyOk(env, uid) {
+  await ensurePrivacy(env);
+  const r = await env.DB.prepare('SELECT version FROM privacy_ack WHERE user_id = ?').bind(uid).first();
+  return !!(r && r.version === PRIVACY_VERSION);
+}
+async function privacyAck(c) {
+  const u = await needUser(c);
+  await ensurePrivacy(c.env);
+  await c.env.DB.batch([ackStmt(c.env, u.id), bump(c.env)]);
+  return json({ ok: true });
+}
 /* ---------- טופס כללי בטיחות: הצהרה של המשתמש, ואישור או ביטול על ידי מנהל ---------- */
 async function needSafety(env, u) {
+  if (!(await privacyOk(env, u.id))) fail(403, 'privacy', 'כדי להזמין צריך לקרוא את הודעת הפרטיות וללחוץ "הבנתי".');
   // החתימה נדרשת מכולם: מנהלים, מרצים, מתרגלים וסטודנטים
   const cur = await currentSafety(env);
   const r = await env.DB.prepare('SELECT version FROM safety WHERE user_id = ?').bind(u.id).first();
