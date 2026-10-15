@@ -61,10 +61,20 @@ let SAFETY_READY = false;
 async function ensureSafety(env) {
   if (SAFETY_READY) return;
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS safety (user_id TEXT PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL DEFAULT \'\', checked_at INTEGER, checked_by TEXT)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS safety_versions (version TEXT PRIMARY KEY, title TEXT NOT NULL, rules TEXT NOT NULL, checks TEXT NOT NULL, published_at INTEGER NOT NULL, published_by TEXT NOT NULL DEFAULT \'\', current INTEGER NOT NULL DEFAULT 0)').run();
+  await env.DB.prepare('INSERT INTO safety_versions (version,title,rules,checks,published_at,published_by,current) SELECT ?,?,?,?,?,?,1 WHERE NOT EXISTS (SELECT 1 FROM safety_versions)')
+    .bind(SAFETY.version, SAFETY.title, JSON.stringify(SAFETY.rules), JSON.stringify(SAFETY.checks), Date.now(), 'ברירת מחדל').run();
   for (const col of ['version', 'signed_name']) {
     try { await env.DB.prepare(`ALTER TABLE safety ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`).run(); } catch (e) { /* העמודה כבר קיימת */ }
   }
   SAFETY_READY = true;
+}
+// הנוסח הנוכחי של כללי ההתנהגות (נערך על ידי המנהלים). בהתחלה נטען מ-config.js
+async function currentSafety(env) {
+  await ensureSafety(env);
+  const r = await env.DB.prepare('SELECT * FROM safety_versions WHERE current = 1').first();
+  if (!r) return { version: SAFETY.version, title: SAFETY.title, rules: SAFETY.rules, checks: SAFETY.checks, minWords: SAFETY.minWords };
+  return { version: r.version, title: r.title, rules: parseJson(r.rules), checks: parseJson(r.checks), minWords: SAFETY.minWords, publishedAt: r.published_at };
 }
 let PEOPLE_READY = false;
 async function ensurePeople(env) {
@@ -166,7 +176,10 @@ async function handleApi(request, env, url, ctx) {
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})\/(accept|decline)$/)) && method === 'POST') res = await answerTransfer(c, m[1], m[2]);
   else if ((m = path.match(/^\/api\/transfers\/([a-f0-9]{8,32})$/)) && method === 'DELETE') res = await dropTransfer(c, m[1]);
   else if (method === 'PUT' && path === '/api/profile') res = await saveProfile(c);
+  else if (method === 'GET' && path === '/api/safety/text') res = await safetyText(c);
   else if (method === 'POST' && path === '/api/safety/sign') res = await safetySign(c);
+  else if (method === 'GET' && path === '/api/admin/safety/text') res = await safetyAdminText(c);
+  else if (method === 'POST' && path === '/api/admin/safety/publish') res = await safetyPublish(c);
   else if (method === 'POST' && path === '/api/admin/safety') res = await safetyAdmin(c);
   else if (method === 'GET' && path === '/api/people') res = await peopleDir(c);
   else if (method === 'GET' && path === '/api/guide') res = await guideFile(c);
@@ -194,7 +207,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, safety: SAFETY,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES,
   });
 }
 
@@ -245,7 +258,7 @@ async function getState(c) {
   if (since !== null && Number(since) === ver) return json({ unchanged: true, v: ver });
   const today = israelNow().date;
   const from = admin ? addDays(today, -RULES.REVIEW_DAYS) : today;
-  await ensureSafety(env);
+  const curSafety = await currentSafety(env);
   const q = (sql, ...args) => env.DB.prepare(sql).bind(...args);
   const out = await env.DB.batch([
     q('SELECT * FROM bookings WHERE date >= ?', from),
@@ -271,7 +284,7 @@ async function getState(c) {
   const releases = {}; for (const r of out[3].results) releases[r.user_id] = { uid: r.user_id, at: r.at, by: r.by_name };
   const transfers = {}; for (const r of out[4].results) transfers[r.gid] = { gid: r.gid, fromUid: r.from_uid, fromName: r.from_name, toEmail: r.to_email, status: r.status, date: r.date, from: r.from_hour, to: r.to_hour, studios: parseJson(r.studios), createdAt: r.created_at };
   const members = {}; for (const r of out[5].results) members[r.id] = { uid: r.id, name: r.name, email: r.email, role: r.role, status: r.status, createdAt: r.created_at };
-  const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, name: r.signed_name || '', valid: r.version === SAFETY.version };
+  const safetyMap = {}; for (const r of out[7].results) safetyMap[r.user_id] = { uid: r.user_id, at: r.at, kind: r.kind, by: r.by_name, name: r.signed_name || '', version: r.version, valid: r.version === curSafety.version };
   const profile = u.profile_done ? { name: u.name, year: u.role, email: u.email, photo: u.photo, createdAt: u.created_at, updatedAt: u.updated_at } : null;
   const member = u.profile_done ? { uid: u.id, name: u.name, email: u.email, role: u.role, status: isAdmin(u) ? 'approved' : u.status, createdAt: u.created_at } : null;
   return json({ v: ver, me: { uid: u.id, email: u.email, isAdmin: admin, suggest: u.profile_done ? '' : (listed && listed.name) || u.name, listRole: (listed && listed.role) || '', safety: safetyMap[u.id] && safetyMap[u.id].valid ? safetyMap[u.id] : null }, safety: admin ? safetyMap : {}, profile, member, bookings, mine, noshows, releases, transfers, members, people });
@@ -684,9 +697,48 @@ async function markNoShow(c) {
 }
 /* ---------- טופס כללי בטיחות: הצהרה של המשתמש, ואישור או ביטול על ידי מנהל ---------- */
 async function needSafety(env, u) {
-  await ensureSafety(env); // החתימה נדרשת מכולם: מנהלים, מרצים, מתרגלים וסטודנטים
+  // החתימה נדרשת מכולם: מנהלים, מרצים, מתרגלים וסטודנטים
+  const cur = await currentSafety(env);
   const r = await env.DB.prepare('SELECT version FROM safety WHERE user_id = ?').bind(u.id).first();
-  if (!r || r.version !== SAFETY.version) fail(403, 'safety', 'כדי להזמין אולפן צריך לקרוא את כללי ההתנהגות בחללים המעשיים ובאולפנים ולחתום עליהם במערכת.');
+  if (!r || r.version !== cur.version) fail(403, 'safety', 'כדי להזמין אולפן צריך לקרוא את כללי ההתנהגות בחללים המעשיים ובאולפנים ולחתום עליהם במערכת.');
+}
+async function safetyText(c) {
+  await needUser(c);
+  return json(await currentSafety(c.env));
+}
+async function safetyAdminText(c) {
+  const { env } = c;
+  await needAdmin(c);
+  const cur = await currentSafety(env);
+  const rows = await env.DB.batch([
+    env.DB.prepare('SELECT version,title,rules,checks,published_at,published_by,current FROM safety_versions ORDER BY published_at DESC'),
+    env.DB.prepare('SELECT version, COUNT(*) AS n FROM safety GROUP BY version'),
+  ]);
+  const counts = new Map(rows[1].results.map((r) => [r.version, r.n]));
+  const history = rows[0].results.map((r) => ({ version: r.version, title: r.title, rules: parseJson(r.rules), checks: parseJson(r.checks), at: r.published_at, by: r.published_by, current: !!r.current, signed: counts.get(r.version) || 0 }));
+  return json({ current: cur, history });
+}
+async function safetyPublish(c) {
+  const { env, request } = c;
+  const a = await needAdmin(c);
+  const b = await readBody(request);
+  const clean = (x, max) => String(x == null ? '' : x).replace(/\r/g, '').trim().slice(0, max);
+  const title = clean(b.title, 200);
+  const rules = Array.isArray(b.rules) ? b.rules.map((x) => clean(x, 3000)).filter(Boolean) : [];
+  const checks = Array.isArray(b.checks) ? b.checks.map((x) => clean(x, 500)).filter(Boolean) : [];
+  if (!title) fail(400, 'title', 'נא למלא כותרת.');
+  if (!rules.length || rules.length > 60) fail(400, 'rules', 'נא להזין בין כלל אחד ל-60 כללים.');
+  if (!checks.length || checks.length > 5) fail(400, 'checks', 'נא להזין בין אישור אחד לחמישה אישורים.');
+  const cur = await currentSafety(env);
+  if (title === cur.title && JSON.stringify(rules) === JSON.stringify(cur.rules) && JSON.stringify(checks) === JSON.stringify(cur.checks)) fail(400, 'same', 'לא בוצע שינוי בנוסח, ולכן לא נוצרה גרסה חדשה.');
+  const n = (await env.DB.prepare('SELECT COUNT(*) AS n FROM safety_versions').first()).n;
+  const version = `${SAFETY.version}-${n + 1}`;
+  await env.DB.batch([
+    env.DB.prepare('UPDATE safety_versions SET current = 0'),
+    env.DB.prepare('INSERT INTO safety_versions (version,title,rules,checks,published_at,published_by,current) VALUES (?,?,?,?,?,?,1)').bind(version, title, JSON.stringify(rules), JSON.stringify(checks), Date.now(), a.name || a.email),
+    audit(env, a, 'safety_publish', version, `${rules.length} כללים`), bump(env),
+  ]);
+  return json({ ok: true, version });
 }
 async function safetySign(c) {
   const { env, request } = c;
@@ -694,14 +746,15 @@ async function safetySign(c) {
   await rateLimit(env, 'safe:' + u.id, 10, 600);
   if (!u.profile_done) fail(403, 'no_profile', 'יש להשלים הרשמה לפני כן.');
   const b = await readBody(request);
+  const cur = await currentSafety(env);
   const name = String(b.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
-  if (name.split(' ').filter((w) => w.length >= 2).length < SAFETY.minWords) fail(400, 'name', 'נא להקליד שם מלא (שם פרטי ושם משפחה) כחתימה.');
+  if (name.split(' ').filter((w) => w.length >= 2).length < cur.minWords) fail(400, 'name', 'נא להקליד שם מלא (שם פרטי ושם משפחה) כחתימה.');
   if (b.read !== true || b.agree !== true) fail(400, 'confirm', 'צריך לקרוא את כל הכללים עד הסוף ולסמן את שני האישורים.');
-  await ensureSafety(env);
+  if (typeof b.version === 'string' && b.version !== cur.version) fail(409, 'stale', 'נוסח הכללים עודכן. סגרו את החלון ופתחו אותו מחדש.');
   const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'sign', ?, ?, ?, ?, ?)").bind(u.id, now, u.name || u.email, now, 'חתימה במערכת', SAFETY.version, name),
-    audit(env, u, 'safety_sign', u.email, SAFETY.version), bump(env),
+    env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'sign', ?, ?, ?, ?, ?)").bind(u.id, now, u.name || u.email, now, 'חתימה במערכת', cur.version, name),
+    audit(env, u, 'safety_sign', u.email, cur.version), bump(env),
   ]);
   return json({ ok: true });
 }
@@ -713,11 +766,11 @@ async function safetyAdmin(c) {
   if (!['set', 'revoke'].includes(act)) fail(400, 'action', 'פעולה לא תקינה.');
   const t = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(uid).first();
   if (!t) fail(404, 'gone', 'המשתמש לא נמצא.');
-  await ensureSafety(env);
+  const cur = await currentSafety(env);
   const now = Date.now(), by = a.name || a.email;
   const st = [];
   if (act === 'revoke') st.push(env.DB.prepare('DELETE FROM safety WHERE user_id = ?').bind(uid));
-  else st.push(env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'admin', ?, ?, ?, ?, '')").bind(uid, now, by, now, by, SAFETY.version));
+  else st.push(env.DB.prepare("INSERT OR REPLACE INTO safety (user_id,at,kind,by_name,checked_at,checked_by,version,signed_name) VALUES (?,?, 'admin', ?, ?, ?, ?, '')").bind(uid, now, by, now, by, cur.version));
   st.push(audit(env, a, 'safety_' + act, t.email), bump(env));
   await env.DB.batch(st);
   return json({ ok: true });
