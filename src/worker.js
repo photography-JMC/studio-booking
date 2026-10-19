@@ -1,4 +1,4 @@
-import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, EMAIL_DOMAIN, EMAIL_RE, SAFETY } from './config.js';
+import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, BLACK_IDS, CLOSE_PURPOSE, EMAIL_DOMAIN, EMAIL_RE, SAFETY } from './config.js';
 import { json, HttpError, fail, randomHex, israelNow, validDate, addDays, absMin, nowAbs, epochOf, blockedReason, closeOf, isAdminEmail, rateLimit, sha256Hex } from './util.js';
 import { verifyGoogleToken, newSessionToken, hashToken, cookieHeader, readCookie, SESSION_MS } from './auth.js';
 
@@ -210,7 +210,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, blackIds: BLACK_IDS, closePurpose: CLOSE_PURPOSE,
   });
 }
 
@@ -325,14 +325,18 @@ async function createBooking(c) {
   if (!canBook(u)) fail(403, 'not_approved', 'ההרשמה שלך עדיין לא אושרה על ידי מנהל.');
   await needSafety(env, u);
   if ((await strikesOf(env, u.id)) >= RULES.MAX_STRIKES) fail(403, 'blocked', 'ההזמנה חסומה עבורך עקב אי-הגעות. לשחרור פנו למנהלי המערכת.');
-  const ids = Array.isArray(b.studios) ? [...new Set(b.studios.map(String))] : [];
+  const closeAll = b.closeAll === true;
+  if (closeAll && !isAdmin(u)) fail(403, 'forbidden', 'סגירת אולפן אפשרית למנהלים בלבד.');
+  const ids = closeAll ? BLACK_IDS.slice() : Array.isArray(b.studios) ? [...new Set(b.studios.map(String))] : [];
+  if (!closeAll && !isAdmin(u) && BLACK_IDS.every((i) => ids.includes(i))) fail(403, 'whole_studio', 'סגירת האולפן השחור במלואו אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');
   if (!ids.length || ids.length > RULES.MAX_STATIONS || ids.some((i) => !STUDIOS.some((s) => s.id === i))) fail(400, 'studios', 'בחירת העמדות לא תקינה.');
   if (!validDate(b.date)) fail(400, 'date', 'תאריך לא תקין.');
   const why = blockedReason(b.date);
   if (why) fail(400, 'date_blocked', `אי אפשר להזמין בתאריך הזה (${why}).`);
   const start = b.start, dur = b.dur;
-  if (!Number.isInteger(start) || !Number.isInteger(dur) || dur < 1 || dur > RULES.MAX_DAY || start < RULES.OPEN || start + dur > closeOf(b.date)) fail(400, 'hours', 'השעות שנבחרו אינן תקינות.');
+  if (!Number.isInteger(start) || !Number.isInteger(dur) || dur < 1 || dur > (closeAll ? 24 : RULES.MAX_DAY) || start < RULES.OPEN || start + dur > closeOf(b.date)) fail(400, 'hours', 'השעות שנבחרו אינן תקינות.');
   if (absMin(b.date, start) <= nowAbs()) fail(400, 'past', 'אי אפשר להזמין שעה שכבר התחילה.');
+  if (closeAll) return closeStudio(c, u, b, ids, start, dur);
   if (!PURPOSES.includes(b.purpose)) fail(400, 'purpose', 'נא לבחור מטרת שימוש.');
   const cap = ids.reduce((a, i) => a + STUDIOS.find((s) => s.id === i).cap, 0);
   const people = b.people;
@@ -388,6 +392,26 @@ async function createBooking(c) {
   return json({ ok: true, gid });
 }
 
+/* סגירת האולפן השחור במלואו (מנהל בלבד): חוסמת את כל העמדות בטווח השעות, בלי מכסה ובלי פרטי משתתפים */
+async function closeStudio(c, u, b, ids, start, dur) {
+  const { env } = c;
+  const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
+  const ph = ids.map(() => '?').join(',');
+  const clash = (await env.DB.prepare(`SELECT COUNT(DISTINCT gid) AS n FROM bookings WHERE date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids).first()).n;
+  if (clash) fail(409, 'taken', `בטווח הזה כבר יש הזמנות או שיעורים באולפן השחור. בטלו אותם קודם ואז סגרו את האולפן, או בחרו שעות אחרות.`);
+  const gid = randomHex(8), now = Date.now(), stmts = [];
+  for (let i = 0; i < dur; i++) for (const s of ids)
+    stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, CLOSE_PURPOSE, 1, notes, now, ''));
+  stmts.push(audit(env, u, 'close_studio', u.email, `${b.date} ${start}-${start + dur}`), bump(env));
+  try { await env.DB.batch(stmts); }
+  catch (e) {
+    if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'אחת העמדות הוזמנה לפני רגע. נסו שוב.');
+    throw e;
+  }
+  return json({ ok: true, gid });
+}
+
 async function editBooking(c, gid) {
   const { env, request } = c;
   const u = await needUser(c);
@@ -398,6 +422,7 @@ async function editBooking(c, gid) {
   const g = groupOf(rows), admin = isAdmin(u);
   if (g.user_id !== u.id && !admin) fail(403, 'forbidden', 'אפשר לערוך רק הזמנה שלך.');
   if (absMin(g.date, g.hi + 1) <= nowAbs()) fail(400, 'over', 'ההזמנה כבר הסתיימה.');
+  if (rows[0].purpose === CLOSE_PURPOSE) fail(400, 'closure', 'סגירת אולפן אי אפשר לערוך. בטלו אותה וצרו סגירה חדשה.');
   if (!PURPOSES.includes(b.purpose)) fail(400, 'purpose', 'נא לבחור מטרת שימוש.');
   const cap = g.studios.reduce((a, i) => a + ((STUDIOS.find((s) => s.id === i) || { cap: 1 }).cap), 0);
   const people = b.people;
@@ -901,6 +926,7 @@ async function statsData(c) {
   const yrs = new Map(); // לפי שנת לימוד: הזמנות לפי השנה שצוינה בהזמנה, השתתפות לפי השנה האחרונה של המשתתף
   const yAgg = (y) => { if (!yrs.has(y)) yrs.set(y, { year: y, who: new Set(), bookings: 0, hours: 0, pBookings: 0, pHours: 0, noshows: 0 }); return yrs.get(y); };
   for (const g of out[0].results) {
+    if (g.purpose === CLOSE_PURPOSE) continue; // סגירת אולפן אינה פעילות שימוש
     if (purpose && g.purpose !== purpose) continue;
     const hours = Math.max(1, g.hi - g.lo), ps = (parts[g.gid] || []).slice().sort((x, y) => String(x.name).localeCompare(String(y.name), 'he'));
     const involved = [{ uid: g.uid, name: g.name, email: g.email, role: g.role, year: ymap.get(g.uid) || '', owner: true }, ...ps.map((x) => ({ uid: x.uid, name: x.name, email: x.email, role: x.role, year: ymap.get(x.uid) || '' }))];

@@ -13,6 +13,7 @@
   var ADMINS=CFG.admins, PERIODS=CFG.periods, CLOSED_RANGES=CFG.closed, SHORT_DAYS=CFG.shortDays;
   var EMAIL_DOMAIN=CFG.domain;
   var EMAIL_RE=/^[a-z0-9._%+\-]+@edu\.jmc\.ac\.il$/;
+  var BLACK=CFG.blackIds||[], CLOSE_P=CFG.closePurpose||'סגירת אולפן';
   var YEARS=CFG.years, PURPOSES=CFG.purposes, STUDY_YEARS=CFG.studyYears||[];
 
   /* ===== Helpers ===== */
@@ -458,7 +459,10 @@
       var d=ds(t); if(dayState(d)==='free'){S.date=d;S.month=new Date(t.getFullYear(),t.getMonth(),1);return}
     }
   }
+  function wholeBlack(){return BLACK.length>0&&BLACK.every(function(i){return S.studios.indexOf(i)>=0})}
+  function closing(){return isAdmin()&&wholeBlack()}
   function maxDur(){
+    if(closing())return 24;
     var left=MAX_DAY-myHoursOn(S.date||'');
     return Math.max(0,Math.min(4,left));
   }
@@ -526,7 +530,7 @@
     return '<div class="col"><p class="eyebrow">אולפני החוג</p>'+
       '<div class="studios" role="group" aria-label="בחירת עמדות">'+
       STUDIOS.map(function(t){var on=S.studios.indexOf(t.id)>=0;return '<button class="studio" role="checkbox" data-act="studio" data-id="'+t.id+'" aria-checked="'+on+'"><span class="nm"><i class="bx" aria-hidden="true"></i>'+esc(t.name)+'</span></button>'}).join('')+
-      '</div><p class="hint">בחירה ברשימה מחליפה את העמדה הקודמת. כדי להזמין כמה עמדות יחד, בחרו אותן במפה (\u0027הגדלת המפה\u0027).</p>'+
+      '</div>'+(isAdmin()?'<button class="btn ghost" type="button" data-act="sel-black" style="width:100%;margin-top:8px">סגירת האולפן השחור במלואו (מנהל)</button>':'')+'<p class="hint">בחירה ברשימה מחליפה את העמדה הקודמת. כדי להזמין כמה עמדות יחד, בחרו אותן במפה (\u0027הגדלת המפה\u0027).</p>'+
       '<div class="detail"><h2>'+(one?esc(one.name):'נבחרו '+sel.length+' עמדות')+'</h2>'+
       (one&&one.desc?'<p>'+esc(one.desc)+'</p>':'')+
       (one&&one.tags&&one.tags.length?'<ul class="tags">'+one.tags.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>':'')+
@@ -645,6 +649,13 @@
   }
   function sideForm(){
     var sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0),f=S.form;
+    if(closing())return '<h3>סגירת האולפן השחור</h3>'+
+      '<div class="sum"><b>האולפן השחור במלואו (7 עמדות)</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
+      '<p class="hint">הסגירה חוסמת את כל עמדות האולפן השחור בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
+      '<div class="field"><label class="lbl" for="f-notes">סיבת הסגירה (אופציונלי)</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
+      (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
+      '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid?' disabled':'')+'>'+(S.busy?'שומר…':'סגירת האולפן')+'</button>'+
+      '<button class="btn ghost" data-act="back">חזרה לשעות</button>';
     return '<h3>פרטי ההזמנה</h3>'+
       '<div class="sum"><b>'+sel.map(function(t){return esc(t.name)}).join('<br>')+'</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
       (S.profile?'<div class="sum"><span class="lbl">מזמין/ה</span><b>'+esc(S.profile.name)+'</b></div>':'')+
@@ -677,14 +688,14 @@
     if(!S.date)return '';
     var gs={},k,b,x;
     for(k in S.bookings){b=S.bookings[k];if(b.studio!==id||b.date!==S.date)continue;
-      x=gs[b.gid]||(gs[b.gid]={sys:b.uid==='sys-classes',name:b.name||'',role:b.year||'',from:b.hour,to:b.hour+1});
+      x=gs[b.gid]||(gs[b.gid]={sys:b.uid==='sys-classes',closed:b.purpose===CLOSE_P,name:b.name||'',role:b.year||'',from:b.hour,to:b.hour+1});
       if(b.hour<x.from)x.from=b.hour;if(b.hour+1>x.to)x.to=b.hour+1}
     var all=Object.keys(gs).map(function(i){return gs[i]});
     if(!all.length)return '';
     var real=all.filter(function(g){return !g.sys}).sort(function(a,c){return a.from-c.from}),
         cls=all.filter(function(g){return g.sys}).sort(function(a,c){return a.from-c.from}),
         list=real.length?real:cls,first=list[0],nm;
-    if(real.length)nm=first.name;
+    if(real.length)nm=first.closed?'סגור':first.name;
     else nm=first.name.indexOf('תיאום עם')===0?'תיאום עם ירדן':'שיעור';
     var lim=(window.matchMedia&&window.matchMedia('(max-width:900px)').matches)?9:13;
     if(nm.length>lim)nm=nm.slice(0,lim-1)+'…';
@@ -777,9 +788,9 @@
     var act='';
     if(S.confirmCancel===g.gid) act='<button class="btn danger" data-act="cancel-yes" data-g="'+g.gid+'">כן, לבטל</button><button class="btn ghost" data-act="cancel-no">השארת ההזמנה</button>';
     else if(can) act='<button class="btn ghost" data-act="cancel" data-g="'+g.gid+'">ביטול</button>';
-    if((mine||isAdmin())&&S.confirmCancel!==g.gid) act='<button class="btn ghost" data-act="edit-open" data-g="'+g.gid+'">עריכת הזמנה</button>'+act;
+    if((mine||isAdmin())&&g.purpose!==CLOSE_P&&S.confirmCancel!==g.gid) act='<button class="btn ghost" data-act="edit-open" data-g="'+g.gid+'">עריכת הזמנה</button>'+act;
     var tfx='';
-    if(mine&&!all&&S.confirmCancel!==g.gid){
+    if(mine&&!all&&g.purpose!==CLOSE_P&&S.confirmCancel!==g.gid){
       var tr=S.transfers[g.gid];
       if(tr&&tr.status==='pending'){
         tfx='<p class="lbl tfnote">ממתין לאישור של '+esc(tr.toEmail)+'</p>';
@@ -1231,19 +1242,20 @@
   /* ===== Booking logic ===== */
   async function submit(){
     var f=S.form,P=S.profile,sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0);
-    var people=parseInt(f.people,10);
+    var people=parseInt(f.people,10),closeAll=closing();
     if(!P){S.err='כדי להזמין צריך להשלים הרשמה.';return renderSide()}
     if(isBlocked(S.uid)||!canBook()||needSafety())return renderSide();
     if(blockedReason(S.date)){S.err='אי אפשר להזמין בתאריך הזה ('+blockedReason(S.date)+').';return renderSide()}
-    if(!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
-    if(yearMsg()){S.err=yearMsg();return renderSide()}
-    if(!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
-    var part=(f.part||[]),pm=partMsg();
+    if(!closeAll&&!f.purpose){S.err='נא לבחור מטרת שימוש.';return renderSide()}
+    if(!closeAll&&yearMsg()){S.err=yearMsg();return renderSide()}
+    if(!closeAll&&!(people>=1&&people<=cap)){S.err='מספר המשתתפים בהזמנה הזאת הוא בין 1 ל-'+cap+'.';return renderSide()}
+    var part=(f.part||[]),pm=closeAll?'':partMsg();
     if(pm){S.err=pm;return renderSide()}
-    if(myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
+    if(!closeAll&&myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
+      if(closeAll)await api('POST','/api/bookings',{closeAll:true,studios:BLACK.slice(),date:S.date,start:S.start,dur:S.dur,notes:(f.notes||'').slice(0,300)});
+      else await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
       renderSide();
@@ -1251,7 +1263,7 @@
       forceRefresh();
       return;
     }
-    S.form.part=[];S.form.solo=false;
+    S.form.part=[];S.form.solo=false;if(closeAll)S.form.notes='';
     S.busy=false;S.done={studios:S.studios.slice(),date:S.date,from:S.start,to:S.start+S.dur};
     S.step='done';S.start=null;
     renderSide();
@@ -1335,13 +1347,14 @@
     else if(a==='mem-rm-yes'){removeMember(b.dataset.u)}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
+    else if(a==='sel-black'){S.studios=BLACK.slice();S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;render()}
     else if(a==='plan-open'){openPlan(b)}
     else if(a==='plan-close'){closePlan()}
     else if(a==='studio'){
       var sid=b.dataset.id,ix=S.studios.indexOf(sid);
       if(b.classList&&b.classList.contains('studio')){S.studios=[sid]} /* ברשימה: בחירה אחת, בחירה חדשה מבטלת את הקודמת. כמה עמדות יחד: במפה */
       else if(ix>=0){if(S.studios.length>1)S.studios.splice(ix,1)}
-      else if(S.studios.length<MAX_STATIONS)S.studios.push(sid);
+      else if(S.studios.length<MAX_STATIONS){S.studios.push(sid);if(!isAdmin()&&wholeBlack()){S.studios.pop();flash('סגירת האולפן השחור במלואו אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');return}}
       S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;
       render();refreshModal(sid);
     }
