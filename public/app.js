@@ -647,10 +647,18 @@
     if(!s.solo&&s.people!==s.part.length+1)return 'מספר המשתתפים ('+s.people+') חייב להתאים לשמות שנבחרו: '+s.part.length+' נוספים ואתם, '+(s.part.length+1)+' בסך הכול.';
     return '';
   }
+  function clHoursHTML(){
+    var end=closeOf(S.date),from=S.start,to=S.start+S.dur,fo='',eo='',h;
+    for(h=OPEN;h<end;h++)fo+='<option value="'+h+'"'+(h===from?' selected':'')+'>'+hh(h)+'</option>';
+    for(h=OPEN+1;h<=end;h++)eo+='<option value="'+h+'"'+(h===to?' selected':'')+'>'+hh(h)+'</option>';
+    return '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cl-from">משעה</label><select id="cl-from">'+fo+'</select></div><div class="field"><label class="lbl" for="cl-to">עד שעה</label><select id="cl-to">'+eo+'</select></div></div>'+
+      '<button class="btn ghost" type="button" data-act="cl-all" style="width:100%;margin-bottom:10px">כל היום ('+hh(OPEN)+'–'+hh(end)+')</button>';
+  }
   function sideForm(){
     var sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0),f=S.form;
     if(closing())return '<h3>סגירת אולפן</h3>'+
       '<div class="sum"><b>'+esc(ZONES[S.closeZone].name)+' במלואו ('+ZONES[S.closeZone].ids.length+' עמדות)</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
+      clHoursHTML()+
       '<p class="hint">הסגירה חוסמת את כל העמדות של האולפן בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
       '<div class="field"><label class="lbl" for="f-notes">סיבת הסגירה (אופציונלי)</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
@@ -1347,6 +1355,7 @@
     else if(a==='mem-rm-yes'){removeMember(b.dataset.u)}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
+    else if(a==='cl-all'){S.start=OPEN;S.dur=closeOf(S.date)-OPEN;S.anchor=null;renderSide()}
     else if(a==='sel-zone'){S.closeZone=b.dataset.z;S.studios=ZONES[S.closeZone].ids.slice();S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;render()}
     else if(a==='plan-open'){openPlan(b)}
     else if(a==='plan-close'){closePlan()}
@@ -1401,6 +1410,12 @@
       else if(e.type==='change'){S.st[sk]=t.value;if(sk==='from'||sk==='to')S.st.period='';stLoad();if(sk==='from'||sk==='to'){var pe=$('#st-period');if(pe)pe.value=''}}
       return}
     if(t.id&&t.id.indexOf('ed-')===0&&S.edit){var ek={'ed-purpose':'purpose','ed-people':'people','ed-year':'studyYear','ed-notes':'notes'}[t.id];if(ek)S.edit[ek]=t.value;return}
+    if(t.id==='cl-from'||t.id==='cl-to'){
+      if(e.type!=='change'||S.start==null)return;
+      var f0=parseInt($('#cl-from').value,10),t0=parseInt($('#cl-to').value,10);
+      if(t.id==='cl-from'&&t0<=f0)t0=f0+1;
+      if(t.id==='cl-to'&&t0<=f0)f0=t0-1;
+      S.start=f0;S.dur=t0-f0;S.anchor=null;renderSide();return}
     if(t.id==='sf-q'){S.sfQ=t.value;var sl=$('#sf-list');if(sl)sl.innerHTML=sfListHTML();return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}
