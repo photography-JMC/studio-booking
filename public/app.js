@@ -13,7 +13,7 @@
   var ADMINS=CFG.admins, PERIODS=CFG.periods, CLOSED_RANGES=CFG.closed, SHORT_DAYS=CFG.shortDays;
   var EMAIL_DOMAIN=CFG.domain;
   var EMAIL_RE=/^[a-z0-9._%+\-]+@edu\.jmc\.ac\.il$/;
-  var BLACK=CFG.blackIds||[], CLOSE_P=CFG.closePurpose||'סגירת אולפן';
+  var ZONES=CFG.zones||{}, CLOSE_P=CFG.closePurpose||'סגירת אולפן';
   var YEARS=CFG.years, PURPOSES=CFG.purposes, STUDY_YEARS=CFG.studyYears||[];
 
   /* ===== Helpers ===== */
@@ -459,8 +459,8 @@
       var d=ds(t); if(dayState(d)==='free'){S.date=d;S.month=new Date(t.getFullYear(),t.getMonth(),1);return}
     }
   }
-  function wholeBlack(){return BLACK.length>0&&BLACK.every(function(i){return S.studios.indexOf(i)>=0})}
-  function closing(){return isAdmin()&&wholeBlack()}
+  function fullZone(){var k;for(k in ZONES){if(ZONES[k].ids.every(function(i){return S.studios.indexOf(i)>=0}))return k}return ''}
+  function closing(){var z=S.closeZone&&ZONES[S.closeZone];return !!(isAdmin()&&z&&S.studios.length===z.ids.length&&z.ids.every(function(i){return S.studios.indexOf(i)>=0}))}
   function maxDur(){
     if(closing())return 24;
     var left=MAX_DAY-myHoursOn(S.date||'');
@@ -530,7 +530,7 @@
     return '<div class="col"><p class="eyebrow">אולפני החוג</p>'+
       '<div class="studios" role="group" aria-label="בחירת עמדות">'+
       STUDIOS.map(function(t){var on=S.studios.indexOf(t.id)>=0;return '<button class="studio" role="checkbox" data-act="studio" data-id="'+t.id+'" aria-checked="'+on+'"><span class="nm"><i class="bx" aria-hidden="true"></i>'+esc(t.name)+'</span></button>'}).join('')+
-      '</div>'+(isAdmin()?'<button class="btn ghost" type="button" data-act="sel-black" style="width:100%;margin-top:8px">סגירת האולפן השחור במלואו (מנהל)</button>':'')+'<p class="hint">בחירה ברשימה מחליפה את העמדה הקודמת. כדי להזמין כמה עמדות יחד, בחרו אותן במפה (\u0027הגדלת המפה\u0027).</p>'+
+      '</div>'+(isAdmin()?'<div class="zones" style="display:grid;gap:6px;margin-top:8px"><span class="lbl">סגירת אולפן (מנהל)</span>'+Object.keys(ZONES).map(function(k){return '<button class="btn ghost" type="button" data-act="sel-zone" data-z="'+k+'" aria-pressed="'+(closing()&&S.closeZone===k)+'" style="width:100%">'+esc(ZONES[k].name)+' במלואו</button>'}).join('')+'</div>':'')+'<p class="hint">בחירה ברשימה מחליפה את העמדה הקודמת. כדי להזמין כמה עמדות יחד, בחרו אותן במפה (\u0027הגדלת המפה\u0027).</p>'+
       '<div class="detail"><h2>'+(one?esc(one.name):'נבחרו '+sel.length+' עמדות')+'</h2>'+
       (one&&one.desc?'<p>'+esc(one.desc)+'</p>':'')+
       (one&&one.tags&&one.tags.length?'<ul class="tags">'+one.tags.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>':'')+
@@ -649,9 +649,9 @@
   }
   function sideForm(){
     var sel=selStudios(),cap=sel.reduce(function(a,t){return a+t.cap},0),f=S.form;
-    if(closing())return '<h3>סגירת האולפן השחור</h3>'+
-      '<div class="sum"><b>האולפן השחור במלואו (7 עמדות)</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
-      '<p class="hint">הסגירה חוסמת את כל עמדות האולפן השחור בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
+    if(closing())return '<h3>סגירת אולפן</h3>'+
+      '<div class="sum"><b>'+esc(ZONES[S.closeZone].name)+' במלואו ('+ZONES[S.closeZone].ids.length+' עמדות)</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
+      '<p class="hint">הסגירה חוסמת את כל העמדות של האולפן בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
       '<div class="field"><label class="lbl" for="f-notes">סיבת הסגירה (אופציונלי)</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
       '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid?' disabled':'')+'>'+(S.busy?'שומר…':'סגירת האולפן')+'</button>'+
@@ -1254,7 +1254,7 @@
     if(!closeAll&&myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      if(closeAll)await api('POST','/api/bookings',{closeAll:true,studios:BLACK.slice(),date:S.date,start:S.start,dur:S.dur,notes:(f.notes||'').slice(0,300)});
+      if(closeAll)await api('POST','/api/bookings',{closeZone:S.closeZone,date:S.date,start:S.start,dur:S.dur,notes:(f.notes||'').slice(0,300)});
       else await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
@@ -1347,14 +1347,14 @@
     else if(a==='mem-rm-yes'){removeMember(b.dataset.u)}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
-    else if(a==='sel-black'){S.studios=BLACK.slice();S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;render()}
+    else if(a==='sel-zone'){S.closeZone=b.dataset.z;S.studios=ZONES[S.closeZone].ids.slice();S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;render()}
     else if(a==='plan-open'){openPlan(b)}
     else if(a==='plan-close'){closePlan()}
     else if(a==='studio'){
-      var sid=b.dataset.id,ix=S.studios.indexOf(sid);
+      var sid=b.dataset.id,ix=S.studios.indexOf(sid);S.closeZone='';
       if(b.classList&&b.classList.contains('studio')){S.studios=[sid]} /* ברשימה: בחירה אחת, בחירה חדשה מבטלת את הקודמת. כמה עמדות יחד: במפה */
       else if(ix>=0){if(S.studios.length>1)S.studios.splice(ix,1)}
-      else if(S.studios.length<MAX_STATIONS){S.studios.push(sid);if(!isAdmin()&&wholeBlack()){S.studios.pop();flash('סגירת האולפן השחור במלואו אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');return}}
+      else if(S.studios.length<MAX_STATIONS){S.studios.push(sid);if(!isAdmin()&&fullZone()){S.studios.pop();flash('סגירת אולפן שחור במלואו (הקדמי, האחורי או שניהם) אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');return}}
       S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;
       render();refreshModal(sid);
     }

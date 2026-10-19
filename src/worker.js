@@ -1,4 +1,4 @@
-import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, BLACK_IDS, CLOSE_PURPOSE, EMAIL_DOMAIN, EMAIL_RE, SAFETY } from './config.js';
+import { STUDIOS, RULES, ADMINS, PERIODS, CLOSED_RANGES, SHORT_DAYS, YEARS, STUDY_YEARS, PURPOSES, BLACK_IDS, ZONES, CLOSE_PURPOSE, EMAIL_DOMAIN, EMAIL_RE, SAFETY } from './config.js';
 import { json, HttpError, fail, randomHex, israelNow, validDate, addDays, absMin, nowAbs, epochOf, blockedReason, closeOf, isAdminEmail, rateLimit, sha256Hex } from './util.js';
 import { verifyGoogleToken, newSessionToken, hashToken, cookieHeader, readCookie, SESSION_MS } from './auth.js';
 
@@ -210,7 +210,7 @@ async function handleApi(request, env, url, ctx) {
 function getConfig(env) {
   return json({
     clientId: env.GOOGLE_CLIENT_ID, domain: EMAIL_DOMAIN, studios: STUDIOS, rules: RULES, admins: ADMINS,
-    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, blackIds: BLACK_IDS, closePurpose: CLOSE_PURPOSE,
+    periods: PERIODS, closed: CLOSED_RANGES, shortDays: SHORT_DAYS, years: YEARS, studyYears: STUDY_YEARS, purposes: PURPOSES, zones: ZONES, closePurpose: CLOSE_PURPOSE,
   });
 }
 
@@ -325,10 +325,12 @@ async function createBooking(c) {
   if (!canBook(u)) fail(403, 'not_approved', 'ההרשמה שלך עדיין לא אושרה על ידי מנהל.');
   await needSafety(env, u);
   if ((await strikesOf(env, u.id)) >= RULES.MAX_STRIKES) fail(403, 'blocked', 'ההזמנה חסומה עבורך עקב אי-הגעות. לשחרור פנו למנהלי המערכת.');
-  const closeAll = b.closeAll === true;
+  const zone = typeof b.closeZone === 'string' ? ZONES[b.closeZone] : null;
+  if (b.closeZone !== undefined && !zone) fail(400, 'zone', 'האולפן שנבחר לסגירה לא תקין.');
+  const closeAll = !!zone;
   if (closeAll && !isAdmin(u)) fail(403, 'forbidden', 'סגירת אולפן אפשרית למנהלים בלבד.');
-  const ids = closeAll ? BLACK_IDS.slice() : Array.isArray(b.studios) ? [...new Set(b.studios.map(String))] : [];
-  if (!closeAll && !isAdmin(u) && BLACK_IDS.every((i) => ids.includes(i))) fail(403, 'whole_studio', 'סגירת האולפן השחור במלואו אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');
+  const ids = closeAll ? zone.ids.slice() : Array.isArray(b.studios) ? [...new Set(b.studios.map(String))] : [];
+  if (!closeAll && !isAdmin(u) && Object.values(ZONES).some((z) => z.ids.every((i) => ids.includes(i)))) fail(403, 'whole_studio', 'סגירת אולפן שחור במלואו (הקדמי, האחורי או שניהם) אפשרית למנהלים בלבד. אפשר לבחור חלק מהעמדות.');
   if (!ids.length || ids.length > RULES.MAX_STATIONS || ids.some((i) => !STUDIOS.some((s) => s.id === i))) fail(400, 'studios', 'בחירת העמדות לא תקינה.');
   if (!validDate(b.date)) fail(400, 'date', 'תאריך לא תקין.');
   const why = blockedReason(b.date);
@@ -394,16 +396,17 @@ async function createBooking(c) {
 
 /* סגירת האולפן השחור במלואו (מנהל בלבד): חוסמת את כל העמדות בטווח השעות, בלי מכסה ובלי פרטי משתתפים */
 async function closeStudio(c, u, b, ids, start, dur) {
+  const zname = ZONES[b.closeZone].name;
   const { env } = c;
   const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
   const ph = ids.map(() => '?').join(',');
   const clash = (await env.DB.prepare(`SELECT COUNT(DISTINCT gid) AS n FROM bookings WHERE date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids).first()).n;
-  if (clash) fail(409, 'taken', `בטווח הזה כבר יש הזמנות או שיעורים באולפן השחור. בטלו אותם קודם ואז סגרו את האולפן, או בחרו שעות אחרות.`);
+  if (clash) fail(409, 'taken', `בטווח הזה כבר יש הזמנות או שיעורים ב${zname}. בטלו אותם קודם ואז סגרו את האולפן, או בחרו שעות אחרות.`);
   const gid = randomHex(8), now = Date.now(), stmts = [];
   for (let i = 0; i < dur; i++) for (const s of ids)
     stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, CLOSE_PURPOSE, 1, notes, now, ''));
-  stmts.push(audit(env, u, 'close_studio', u.email, `${b.date} ${start}-${start + dur}`), bump(env));
+  stmts.push(audit(env, u, 'close_studio', u.email, `${zname} ${b.date} ${start}-${start + dur}`), bump(env));
   try { await env.DB.batch(stmts); }
   catch (e) {
     if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'אחת העמדות הוזמנה לפני רגע. נסו שוב.');

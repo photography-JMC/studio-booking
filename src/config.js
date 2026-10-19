@@ -48,6 +48,7 @@ export const SHORT_DAYS = { '2027-05-10': 17, '2027-05-11': 14 };
 export const STUDY_YEARS = ['שנה א׳', 'שנה ב׳', 'שנה ג׳', 'שנה ד׳', 'בוגר/ת'];
 export const YEARS = ['סטודנט', 'מרצה', 'מתרגל', 'מדריך', 'אורח'];
 export const BLACK_IDS = ['bf1', 'bf2', 'bf3', 'bf4', 'bf5', 'bb1', 'bb2']; // כל עמדות האולפן השחור: סגירה מלאה שלו היא למנהלים בלבד
+export const ZONES = { black: { name: 'האולפן השחור', ids: BLACK_IDS }, front: { name: 'האולפן השחור הקדמי', ids: ['bf1', 'bf2', 'bf3', 'bf4', 'bf5'] }, back: { name: 'האולפן השחור האחורי', ids: ['bb1', 'bb2'] } };
 export const CLOSE_PURPOSE = 'סגירת אולפן';
 export const PURPOSES = ['תרגיל קורס', 'פרויקט גמר', 'פרויקט אישי', 'צילום לתיק עבודות', 'האקתון', 'אחר'];
 export const TIMEZONE = 'Asia/Jerusalem';
