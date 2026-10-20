@@ -380,9 +380,10 @@
       '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-from">מתאריך</label><input id="cd-from" type="date" value="'+esc(c.from)+'"></div><div class="field"><label class="lbl" for="cd-to">עד תאריך</label><input id="cd-to" type="date" value="'+esc(c.to)+'"></div></div>'+
       '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-hf">משעה</label><select id="cd-hf">'+hf+'</select></div><div class="field"><label class="lbl" for="cd-ht">עד שעה</label><select id="cd-ht">'+ht+'</select></div></div>'+
       '<div class="field"><label class="lbl" for="cd-scope">אולפנים</label><select id="cd-scope">'+sc+'</select></div>'+
+      (c.mode==='add'?'<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0"><input type="checkbox" id="cd-ovr"'+(c.override?' checked':'')+' style="margin-top:4px"><span>החלפת שעות תפוסות: לבטל הזמנות של סטודנטים (במלואן) ולהחליף שיעורים וחסימות קיימות בשעות האלה. הסטודנטים לא יקבלו הודעה.</span></label>':'')+
       (c.err?'<p class="err" role="alert">'+esc(c.err)+'</p>':'')+(c.msg?'<p class="ok" role="status">'+esc(c.msg)+'</p>':'')+
       '<button class="btn" data-act="cd-run"'+(c.busy?' disabled':'')+'>'+(c.busy?'מעדכן…':(c.mode==='add'?'הוספת החסימה':'הסרת החסימה'))+'</button>'+
-      '<p class="hint">הוספה לא דורסת הזמנות קיימות: שעות שכבר תפוסות מדולגות. חגים וחופשות מדולגים.</p></div></div>';
+      '<p class="hint">בלי סימון "החלפת שעות תפוסות", שעות שכבר תפוסות מדולגות. חגים וחופשות מדולגים תמיד.</p></div></div>';
   }
   async function cdRun(){
     cdInit();var c=S.cd,sc=cdScopes().filter(function(x){return x[0]===c.scope})[0];
@@ -390,8 +391,8 @@
     if(!c.from||!c.to||c.to<c.from){c.err='טווח התאריכים לא תקין.';c.msg='';return renderCoord()}
     c.busy=true;c.err='';c.msg='';renderCoord();
     try{
-      var r=await api('POST','/api/admin/coord',{mode:c.mode,days:c.days,from:c.from,to:c.to,hFrom:c.hf,hTo:c.ht,studios:sc[2]});
-      c.msg=c.mode==='add'?'נוספו '+r.added+' שעות-עמדה'+(r.skipped?', ודולגו '+r.skipped+' שכבר תפוסות.':'.'):'הוסרו '+r.removed+' שעות-עמדה.';
+      var r=await api('POST','/api/admin/coord',{mode:c.mode,days:c.days,from:c.from,to:c.to,hFrom:c.hf,hTo:c.ht,studios:sc[2],override:c.mode==='add'&&!!c.override});
+      c.msg=c.mode==='add'?'נוספו '+r.added+' שעות-עמדה'+(r.skipped?', ודולגו '+r.skipped+' שכבר תפוסות':'')+(r.replaced?', הוחלפו '+r.replaced+' חסימות או שיעורים':'')+(r.cancelled?', בוטלו '+r.cancelled+' הזמנות של סטודנטים':'')+'.':'הוסרו '+r.removed+' שעות-עמדה.';
       c.busy=false;await forceRefresh();
     }catch(e){c.busy=false;c.err=e.message||'העדכון נכשל.'}
     if(S.tab==='coord')renderCoord();
@@ -707,6 +708,7 @@
     if(closing())return '<h3>סגירת אולפן</h3>'+
       '<div class="sum"><b>'+esc(ZONES[S.closeZone].name)+' במלואו ('+ZONES[S.closeZone].ids.length+' עמדות)</b><span>'+esc(fmtLong(parse(S.date)))+' · '+rng(S.start,S.start+S.dur)+'</span></div>'+
       clHoursHTML()+
+      '<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0"><input type="checkbox" id="cl-ovr"'+(S.form.override?' checked':'')+' style="margin-top:4px"><span>החלפת שעות תפוסות: לבטל הזמנות של סטודנטים (במלואן) ולהחליף שיעורים וחסימות קיימות בשעות האלה. הסטודנטים לא יקבלו הודעה.</span></label>'+
       '<p class="hint">הסגירה חוסמת את כל העמדות של האולפן בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
       '<div class="field"><label class="lbl" for="f-notes">סיבת הסגירה (אופציונלי)</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
@@ -1311,7 +1313,7 @@
     if(!closeAll&&myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      if(closeAll)await api('POST','/api/bookings',{closeZone:S.closeZone,date:S.date,start:S.start,dur:S.dur,notes:(f.notes||'').slice(0,300)});
+      if(closeAll)await api('POST','/api/bookings',{closeZone:S.closeZone,date:S.date,start:S.start,dur:S.dur,override:!!f.override,notes:(f.notes||'').slice(0,300)});
       else await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
@@ -1320,7 +1322,7 @@
       forceRefresh();
       return;
     }
-    S.form.part=[];S.form.solo=false;if(closeAll)S.form.notes='';
+    S.form.part=[];S.form.solo=false;if(closeAll){S.form.notes='';S.form.override=false}
     S.busy=false;S.done={studios:S.studios.slice(),date:S.date,from:S.start,to:S.start+S.dur};
     S.step='done';S.start=null;
     renderSide();
@@ -1461,13 +1463,14 @@
       else if(e.type==='change'){S.st[sk]=t.value;if(sk==='from'||sk==='to')S.st.period='';stLoad();if(sk==='from'||sk==='to'){var pe=$('#st-period');if(pe)pe.value=''}}
       return}
     if(t.id&&t.id.indexOf('ed-')===0&&S.edit){var ek={'ed-purpose':'purpose','ed-people':'people','ed-year':'studyYear','ed-notes':'notes'}[t.id];if(ek)S.edit[ek]=t.value;return}
+    if(t.id==='cl-ovr'){S.form.override=t.checked;return}
     if(t.id==='cl-from'||t.id==='cl-to'){
       if(e.type!=='change'||S.start==null)return;
       var f0=parseInt($('#cl-from').value,10),t0=parseInt($('#cl-to').value,10);
       if(t.id==='cl-from'&&t0<=f0)t0=f0+1;
       if(t.id==='cl-to'&&t0<=f0)f0=t0-1;
       S.start=f0;S.dur=t0-f0;S.anchor=null;renderSide();return}
-    if(t.id&&t.id.indexOf('cd-')===0&&S.cd){var ck={'cd-mode':'mode','cd-from':'from','cd-to':'to','cd-scope':'scope'}[t.id];
+    if(t.id&&t.id.indexOf('cd-')===0&&S.cd){if(t.id==='cd-ovr'){S.cd.override=t.checked;return}var ck={'cd-mode':'mode','cd-from':'from','cd-to':'to','cd-scope':'scope'}[t.id];
       if(ck){S.cd[ck]=t.value;if(ck==='mode'&&e.type==='change')renderCoord()}
       else if(t.id==='cd-hf'||t.id==='cd-ht'){var v=parseInt(t.value,10);if(t.id==='cd-hf'){S.cd.hf=v;if(S.cd.ht<=v)S.cd.ht=v+1}else{S.cd.ht=v;if(S.cd.hf>=v)S.cd.hf=v-1}if(e.type==='change')renderCoord()}
       return}

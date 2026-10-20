@@ -401,19 +401,27 @@ async function closeStudio(c, u, b, ids, start, dur) {
   const { env } = c;
   const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
   const ph = ids.map(() => '?').join(',');
-  const clash = (await env.DB.prepare(`SELECT COUNT(DISTINCT gid) AS n FROM bookings WHERE date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids).first()).n;
-  if (clash) fail(409, 'taken', `בטווח הזה כבר יש הזמנות או שיעורים ב${zname}. בטלו אותם קודם ואז סגרו את האולפן, או בחרו שעות אחרות.`);
+  const rowsIn = (await env.DB.prepare(`SELECT gid, user_id FROM bookings WHERE date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids).all()).results;
+  const clash = new Set(rowsIn.map((r) => r.gid)).size;
+  const pre = [];
+  let cancelledN = 0;
+  if (clash && b.override === true) {
+    await ensurePeople(env);
+    const g = new Set(rowsIn.filter((r) => r.user_id !== 'sys-classes').map((r) => r.gid));
+    cancelledN = g.size;
+    pre.push(env.DB.prepare(`DELETE FROM bookings WHERE user_id = 'sys-classes' AND date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids), ...cancelGids(env, g));
+  } else if (clash) fail(409, 'taken', `בטווח הזה כבר יש הזמנות או שיעורים באולפן שנבחר. סמנו "החלפת שעות תפוסות" כדי להחליף אותם, או בחרו שעות אחרות.`);
   const gid = randomHex(8), now = Date.now(), stmts = [];
   for (let i = 0; i < dur; i++) for (const s of ids)
     stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, CLOSE_PURPOSE, 1, notes, now, ''));
-  stmts.push(audit(env, u, 'close_studio', u.email, `${zname} ${b.date} ${start}-${start + dur}`), bump(env));
-  try { await env.DB.batch(stmts); }
+  stmts.push(audit(env, u, 'close_studio', u.email, `${zname} ${b.date} ${start}-${start + dur}${pre.length ? `, בוטלו ${cancelledN} הזמנות והוחלפו חסימות קיימות` : ''}`), bump(env));
+  try { await env.DB.batch([...pre, ...stmts]); }
   catch (e) {
     if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'אחת העמדות הוזמנה לפני רגע. נסו שוב.');
     throw e;
   }
-  return json({ ok: true, gid });
+  return json({ ok: true, gid, cancelled: cancelledN });
 }
 
 async function editBooking(c, gid) {
@@ -964,6 +972,16 @@ async function statsData(c) {
   if (detail) res.detail = detailRows.sort((a, b) => (a.date + a.lo).localeCompare(b.date + b.lo));
   return json(res);
 }
+/* מבטל במלואן הזמנות של משתמשים (לפי gid), כולל משתתפים והעברות */
+function cancelGids(env, gids) {
+  const st = [], list = [...gids];
+  for (let i = 0; i < list.length; i += 80) {
+    const part = list.slice(i, i + 80), ph = part.map(() => '?').join(',');
+    st.push(env.DB.prepare(`DELETE FROM bookings WHERE gid IN (${ph})`).bind(...part), env.DB.prepare(`DELETE FROM transfers WHERE gid IN (${ph})`).bind(...part), env.DB.prepare(`DELETE FROM booking_people WHERE gid IN (${ph})`).bind(...part));
+  }
+  return st;
+}
+
 /* ---------- חסימות "תיאום עם ירדן גבאי": מנהל מוסיף או מסיר לפי ימים, תאריכים, שעות ואולפנים ---------- */
 const COORD_NAME = 'תיאום עם ירדן גבאי';
 async function coordBlocks(c) {
@@ -992,26 +1010,38 @@ async function coordBlocks(c) {
     await env.DB.batch([env.DB.prepare(`DELETE FROM bookings WHERE ${where}`).bind(...args), audit(env, u, 'coord_remove', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${n} שעות-עמדה`), bump(env)]);
     return json({ ok: true, removed: n });
   }
-  const taken = new Set((await env.DB.prepare(`SELECT studio, date, hour FROM bookings WHERE date >= ? AND date <= ? AND studio IN (${ph})`).bind(from, b.to, ...ids).all()).results.map((r) => `${r.studio}|${r.date}|${r.hour}`));
+  const override = b.override === true;
+  await ensurePeople(env);
+  const taken = new Map((await env.DB.prepare(`SELECT studio, date, hour, gid, user_id FROM bookings WHERE date >= ? AND date <= ? AND studio IN (${ph})`).bind(from, b.to, ...ids).all()).results.map((r) => [`${r.studio}|${r.date}|${r.hour}`, r]));
+  const cancelled = new Set();
+  let replaced = 0;
   const now = Date.now(), stmts = [];
   let added = 0, skipped = 0;
   for (let d = from; d <= b.to; d = addDays(d, 1)) {
     if (!days.includes(new Date(d + 'T12:00:00Z').getUTCDay()) || blockedReason(d)) continue;
     const gid = randomHex(8);
     for (let h = hf; h < Math.min(ht, closeOf(d)); h++) for (const s of ids) {
-      if (taken.has(`${s}|${d}|${h}`)) { skipped++; continue; }
+      const ex = taken.get(`${s}|${d}|${h}`);
+      if (ex) {
+        if (!override) { skipped++; continue; }
+        if (ex.user_id === 'sys-classes') replaced++; else cancelled.add(ex.gid);
+      }
       added++;
       stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .bind(s, d, h, gid, 'sys-classes', COORD_NAME, 'classes@system.local', 'מערכת', 'אחר', 1, 'בתיאום מראש עם ירדן גבאי', now, ''));
     }
   }
   if (added > 3000) fail(400, 'big', 'הטווח גדול מדי. צמצמו את התאריכים או האולפנים.');
+  if (override && (replaced || cancelled.size)) {
+    const delSys = env.DB.prepare(`DELETE FROM bookings WHERE user_id = 'sys-classes' AND date >= ? AND date <= ? AND hour >= ? AND hour < ? AND studio IN (${ph}) AND strftime('%w', date) IN (${dows.map(() => '?').join(',')})`).bind(from, b.to, hf, ht, ...ids, ...dows);
+    await env.DB.batch([delSys, ...cancelGids(env, cancelled)]);
+  }
   for (let i = 0; i < stmts.length; i += 100) {
     try { await env.DB.batch(stmts.slice(i, i + 100)); }
     catch (e) { if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'חלק מהשעות הוזמנו בזמן העדכון. נסו שוב.'); throw e; }
   }
-  await env.DB.batch([audit(env, u, 'coord_add', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${added} שעות-עמדה`), bump(env)]);
-  return json({ ok: true, added, skipped });
+  await env.DB.batch([audit(env, u, 'coord_add', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${added} שעות-עמדה${override ? `, הוחלפו ${replaced} חסימות/שיעורים ובוטלו ${cancelled.size} הזמנות` : ''}`), bump(env)]);
+  return json({ ok: true, added, skipped, replaced, cancelled: cancelled.size });
 }
 
 async function cleanupYear(c) {
