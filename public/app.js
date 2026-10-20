@@ -357,12 +357,12 @@
   function cdInit(){if(!S.cd){var t=ds(new Date());S.cd={mode:'add',days:[],from:t,to:t,hf:OPEN,ht:CLOSE,scope:'all',busy:false,msg:'',err:''}}}
   function cdSummary(){
     var today=ds(new Date()),by={},k,b,w,d;
-    for(k in S.bookings){b=S.bookings[k];if(b.name!==COORD||b.date<today)continue;
+    for(k in S.bookings){b=S.bookings[k];if(!(b.uid==='sys-classes'&&b.name.indexOf('שיעור:')!==0)||b.date<today)continue;
       d=new Date(b.date+'T12:00:00').getDay();
-      w=by[d]||(by[d]={hours:{},studios:{},dates:{}});w.hours[b.hour]=1;w.studios[b.studio]=1;w.dates[b.date]=1}
+      w=by[d]||(by[d]={hours:{},studios:{},dates:{},labels:{}});w.labels[b.name]=1;w.hours[b.hour]=1;w.studios[b.studio]=1;w.dates[b.date]=1}
     var rows=Object.keys(by).sort().map(function(d){var w=by[d],hs=Object.keys(w.hours).map(Number).sort(function(a,c){return a-c}),ids=Object.keys(w.studios);
       var nm=ids.length>=STUDIOS.length?'כל האולפנים':ids.length+' עמדות';
-      return '<li><b>יום '+(DOWL[d]||d)+'</b>: '+rng(hs[0],hs[hs.length-1]+1)+' · '+esc(nm)+' · '+Object.keys(w.dates).length+' תאריכים קרובים</li>'});
+      return '<li><b>יום '+(DOWL[d]||d)+'</b>: '+rng(hs[0],hs[hs.length-1]+1)+' · '+esc(nm)+' · '+Object.keys(w.dates).length+' תאריכים קרובים · '+esc(Object.keys(w.labels).join(', '))+'</li>'});
     return rows.length?'<ul class="rules">'+rows.join('')+'</ul>':'<p class="hint">אין כרגע חסימות כאלה בתאריכים הקרובים.</p>';
   }
   function renderCoord(){
@@ -379,6 +379,7 @@
       '<div class="field"><span class="lbl">ימים בשבוע</span><div style="display:flex;gap:6px;flex-wrap:wrap">'+dy+'</div></div>'+
       '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-from">מתאריך</label><input id="cd-from" type="date" value="'+esc(c.from)+'"></div><div class="field"><label class="lbl" for="cd-to">עד תאריך</label><input id="cd-to" type="date" value="'+esc(c.to)+'"></div></div>'+
       '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-hf">משעה</label><select id="cd-hf">'+hf+'</select></div><div class="field"><label class="lbl" for="cd-ht">עד שעה</label><select id="cd-ht">'+ht+'</select></div></div>'+
+      '<div class="field"><label class="lbl" for="cd-label">תיאור החסימה (יוצג לסטודנטים בשעות התפוסות)</label><input id="cd-label" maxlength="40" placeholder="'+esc(COORD)+'" value="'+esc(c.label||'')+'"></div>'+
       '<div class="field"><label class="lbl" for="cd-scope">אולפנים</label><select id="cd-scope">'+sc+'</select></div>'+
       (c.mode==='add'?'<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0"><input type="checkbox" id="cd-ovr"'+(c.override?' checked':'')+' style="margin-top:4px"><span>החלפת שעות תפוסות: לבטל הזמנות של סטודנטים (במלואן) ולהחליף שיעורים וחסימות קיימות בשעות האלה. הסטודנטים לא יקבלו הודעה.</span></label>':'')+
       (c.err?'<p class="err" role="alert">'+esc(c.err)+'</p>':'')+(c.msg?'<p class="ok" role="status">'+esc(c.msg)+'</p>':'')+
@@ -391,7 +392,7 @@
     if(!c.from||!c.to||c.to<c.from){c.err='טווח התאריכים לא תקין.';c.msg='';return renderCoord()}
     c.busy=true;c.err='';c.msg='';renderCoord();
     try{
-      var r=await api('POST','/api/admin/coord',{mode:c.mode,days:c.days,from:c.from,to:c.to,hFrom:c.hf,hTo:c.ht,studios:sc[2],override:c.mode==='add'&&!!c.override});
+      var r=await api('POST','/api/admin/coord',{mode:c.mode,days:c.days,from:c.from,to:c.to,hFrom:c.hf,hTo:c.ht,studios:sc[2],label:c.label||'',override:c.mode==='add'&&!!c.override});
       c.msg=c.mode==='add'?'נוספו '+r.added+' שעות-עמדה'+(r.skipped?', ודולגו '+r.skipped+' שכבר תפוסות':'')+(r.replaced?', הוחלפו '+r.replaced+' חסימות או שיעורים':'')+(r.cancelled?', בוטלו '+r.cancelled+' הזמנות של סטודנטים':'')+'.':'הוסרו '+r.removed+' שעות-עמדה.';
       c.busy=false;await forceRefresh();
     }catch(e){c.busy=false;c.err=e.message||'העדכון נכשל.'}
@@ -494,7 +495,8 @@
   function adminsLine(){return ADMINS.map(function(a){return esc(a.name)+' ('+esc(a.email)+')'}).join(', ')}
   /* שעה פנויה רק אם כל העמדות שנבחרו פנויות בה */
   function slotFree(d,h){return S.studios.every(function(id){return slotOK(id,d,h,1)})}
-  function coordNote(d,h){for(var i=0;i<S.studios.length;i++){var b=S.bookings[key(S.studios[i],d,h)];if(b&&b.name&&b.name.indexOf('תיאום עם')===0)return b.name}return ''}
+  function noteOf(b){return b&&b.name&&((b.uid==='sys-classes'&&b.name.indexOf('שיעור:')!==0)||b.purpose===CLOSE_P)?b.name:''}
+  function coordNote(d,h){for(var i=0;i<S.studios.length;i++){var n=noteOf(S.bookings[key(S.studios[i],d,h)]);if(n)return n}return ''}
   function takenAny(d,h){return S.studios.some(function(id){return isTaken(id,d,h)})}
   function dayState(d){
     if(blockedReason(d))return 'off';
@@ -640,7 +642,7 @@
     for(var h=OPEN;h<closeOf(S.date);h++){
       var ok=slotFree(S.date,h),tk=takenAny(S.date,h);
       var inSel=sel&&h>=S.start&&h<S.start+S.dur;
-      if(ok) rows+='<button class="slot" data-act="slot" data-h="'+h+'" aria-pressed="'+inSel+'">'+hh(h)+'–'+hh(h+1)+'</button>';
+      if(ok) rows+='<button class="slot" data-act="slot" data-h="'+h+'" aria-pressed="'+inSel+'"><span class="t">'+hh(h)+'–'+hh(h+1)+'</span></button>';
       else rows+='<button class="slot" disabled><span class="t">'+hh(h)+'–'+hh(h+1)+'</span>'+(tk?'<span'+(coordNote(S.date,h)?' style="font-size:.8em;color:#ff4d4d;font-weight:700"':'')+'>'+(coordNote(S.date,h)||'תפוס')+'</span>':'')+'</button>';
     }
     html+='<div class="slots" id="slots">'+rows+'</div>';
@@ -710,7 +712,7 @@
       clHoursHTML()+
       '<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0"><input type="checkbox" id="cl-ovr"'+(S.form.override?' checked':'')+' style="margin-top:4px"><span>החלפת שעות תפוסות: לבטל הזמנות של סטודנטים (במלואן) ולהחליף שיעורים וחסימות קיימות בשעות האלה. הסטודנטים לא יקבלו הודעה.</span></label>'+
       '<p class="hint">הסגירה חוסמת את כל העמדות של האולפן בשעות האלה, והסטודנטים יראו "סגור". אפשר לבטל אותה באזור שלי.</p>'+
-      '<div class="field"><label class="lbl" for="f-notes">סיבת הסגירה (אופציונלי)</label><textarea id="f-notes" data-f="notes">'+esc(f.notes)+'</textarea></div>'+
+      '<div class="field"><label class="lbl" for="f-notes">תיאור הסגירה (יוצג לסטודנטים בשעות התפוסות)</label><input id="f-notes" data-f="notes" maxlength="40" placeholder="סגור" value="'+esc(f.notes)+'"></div>'+
       (S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
       '<button class="btn" data-act="submit"'+(S.busy||!S.db||!S.uid?' disabled':'')+'>'+(S.busy?'שומר…':'סגירת האולפן')+'</button>'+
       '<button class="btn ghost" data-act="back">חזרה לשעות</button>';
@@ -754,7 +756,7 @@
         cls=all.filter(function(g){return g.sys}).sort(function(a,c){return a.from-c.from}),
         list=real.length?real:cls,first=list[0],nm;
     if(real.length)nm=first.closed?'סגור':first.name;
-    else nm=first.name.indexOf('תיאום עם')===0?'תיאום עם ירדן':'שיעור';
+    else nm=first.name.indexOf('שיעור:')===0?'שיעור':first.name;
     var lim=(window.matchMedia&&window.matchMedia('(max-width:900px)').matches)?9:13;
     if(nm.length>lim)nm=nm.slice(0,lim-1)+'…';
     var extra=list.length>1?' +'+(list.length-1):'';
@@ -1313,7 +1315,7 @@
     if(!closeAll&&myHoursOn(S.date)+S.dur>MAX_DAY){S.err='ההזמנה חורגת ממכסה של '+MAX_DAY+' שעות ליום.';return renderSide()}
     S.err='';S.busy=true;renderSide();
     try{
-      if(closeAll)await api('POST','/api/bookings',{closeZone:S.closeZone,date:S.date,start:S.start,dur:S.dur,override:!!f.override,notes:(f.notes||'').slice(0,300)});
+      if(closeAll)await api('POST','/api/bookings',{closeZone:S.closeZone,date:S.date,start:S.start,dur:S.dur,override:!!f.override,label:(f.notes||'').slice(0,40)});
       else await api('POST','/api/bookings',{studios:S.studios.slice(),date:S.date,start:S.start,dur:S.dur,purpose:f.purpose,people:people,notes:(f.notes||'').slice(0,300),participants:part.map(function(x){return x.uid}),mode:partState().solo?'solo':'group',studyYear:needsYear()?f.studyYear:''});
     }catch(e){
       S.busy=false;S.step='slots';S.start=null;S.anchor=null;S.err='';
@@ -1470,7 +1472,7 @@
       if(t.id==='cl-from'&&t0<=f0)t0=f0+1;
       if(t.id==='cl-to'&&t0<=f0)f0=t0-1;
       S.start=f0;S.dur=t0-f0;S.anchor=null;renderSide();return}
-    if(t.id&&t.id.indexOf('cd-')===0&&S.cd){if(t.id==='cd-ovr'){S.cd.override=t.checked;return}var ck={'cd-mode':'mode','cd-from':'from','cd-to':'to','cd-scope':'scope'}[t.id];
+    if(t.id&&t.id.indexOf('cd-')===0&&S.cd){if(t.id==='cd-ovr'){S.cd.override=t.checked;return}var ck={'cd-mode':'mode','cd-from':'from','cd-to':'to','cd-scope':'scope','cd-label':'label'}[t.id];
       if(ck){S.cd[ck]=t.value;if(ck==='mode'&&e.type==='change')renderCoord()}
       else if(t.id==='cd-hf'||t.id==='cd-ht'){var v=parseInt(t.value,10);if(t.id==='cd-hf'){S.cd.hf=v;if(S.cd.ht<=v)S.cd.ht=v+1}else{S.cd.ht=v;if(S.cd.hf>=v)S.cd.hf=v-1}if(e.type==='change')renderCoord()}
       return}

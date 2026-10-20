@@ -399,7 +399,8 @@ async function createBooking(c) {
 async function closeStudio(c, u, b, ids, start, dur) {
   const zname = ZONES[b.closeZone].name;
   const { env } = c;
-  const notes = typeof b.notes === 'string' ? b.notes.slice(0, 300) : '';
+  const label = cleanLabel(b.label, 'סגור');
+  const notes = label;
   const ph = ids.map(() => '?').join(',');
   const rowsIn = (await env.DB.prepare(`SELECT gid, user_id FROM bookings WHERE date = ? AND hour >= ? AND hour < ? AND studio IN (${ph})`).bind(b.date, start, start + dur, ...ids).all()).results;
   const clash = new Set(rowsIn.map((r) => r.gid)).size;
@@ -414,7 +415,7 @@ async function closeStudio(c, u, b, ids, start, dur) {
   const gid = randomHex(8), now = Date.now(), stmts = [];
   for (let i = 0; i < dur; i++) for (const s of ids)
     stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(s, b.date, start + i, gid, u.id, u.name, u.email, u.role, CLOSE_PURPOSE, 1, notes, now, ''));
+      .bind(s, b.date, start + i, gid, u.id, label, u.email, u.role, CLOSE_PURPOSE, 1, notes, now, ''));
   stmts.push(audit(env, u, 'close_studio', u.email, `${zname} ${b.date} ${start}-${start + dur}${pre.length ? `, בוטלו ${cancelledN} הזמנות והוחלפו חסימות קיימות` : ''}`), bump(env));
   try { await env.DB.batch([...pre, ...stmts]); }
   catch (e) {
@@ -984,6 +985,7 @@ function cancelGids(env, gids) {
 
 /* ---------- חסימות "תיאום עם ירדן גבאי": מנהל מוסיף או מסיר לפי ימים, תאריכים, שעות ואולפנים ---------- */
 const COORD_NAME = 'תיאום עם ירדן גבאי';
+const cleanLabel = (v, dflt) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 40) || dflt;
 async function coordBlocks(c) {
   const { env, request } = c;
   const u = await needAdmin(c);
@@ -1004,13 +1006,14 @@ async function coordBlocks(c) {
   const ph = ids.map(() => '?').join(',');
   const dows = days.map(String);
   if (mode === 'remove') {
-    const where = `user_id = 'sys-classes' AND name = ? AND date >= ? AND date <= ? AND hour >= ? AND hour < ? AND studio IN (${ph}) AND strftime('%w', date) IN (${dows.map(() => '?').join(',')})`;
-    const args = [COORD_NAME, from, b.to, hf, ht, ...ids, ...dows];
+    const where = `user_id = 'sys-classes' AND name NOT LIKE ? AND date >= ? AND date <= ? AND hour >= ? AND hour < ? AND studio IN (${ph}) AND strftime('%w', date) IN (${dows.map(() => '?').join(',')})`;
+    const args = ['שיעור:%', from, b.to, hf, ht, ...ids, ...dows];
     const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM bookings WHERE ${where}`).bind(...args).first()).n;
     await env.DB.batch([env.DB.prepare(`DELETE FROM bookings WHERE ${where}`).bind(...args), audit(env, u, 'coord_remove', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${n} שעות-עמדה`), bump(env)]);
     return json({ ok: true, removed: n });
   }
   const override = b.override === true;
+  const label = cleanLabel(b.label, COORD_NAME);
   await ensurePeople(env);
   const taken = new Map((await env.DB.prepare(`SELECT studio, date, hour, gid, user_id FROM bookings WHERE date >= ? AND date <= ? AND studio IN (${ph})`).bind(from, b.to, ...ids).all()).results.map((r) => [`${r.studio}|${r.date}|${r.hour}`, r]));
   const cancelled = new Set();
@@ -1028,7 +1031,7 @@ async function coordBlocks(c) {
       }
       added++;
       stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .bind(s, d, h, gid, 'sys-classes', COORD_NAME, 'classes@system.local', 'מערכת', 'אחר', 1, 'בתיאום מראש עם ירדן גבאי', now, ''));
+        .bind(s, d, h, gid, 'sys-classes', label, 'classes@system.local', 'מערכת', 'אחר', 1, label === COORD_NAME ? 'בתיאום מראש עם ירדן גבאי' : label, now, ''));
     }
   }
   if (added > 3000) fail(400, 'big', 'הטווח גדול מדי. צמצמו את התאריכים או האולפנים.');
@@ -1040,7 +1043,7 @@ async function coordBlocks(c) {
     try { await env.DB.batch(stmts.slice(i, i + 100)); }
     catch (e) { if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'חלק מהשעות הוזמנו בזמן העדכון. נסו שוב.'); throw e; }
   }
-  await env.DB.batch([audit(env, u, 'coord_add', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${added} שעות-עמדה${override ? `, הוחלפו ${replaced} חסימות/שיעורים ובוטלו ${cancelled.size} הזמנות` : ''}`), bump(env)]);
+  await env.DB.batch([audit(env, u, 'coord_add', `${from}..${b.to}`, `${label}: ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${added} שעות-עמדה${override ? `, הוחלפו ${replaced} חסימות/שיעורים ובוטלו ${cancelled.size} הזמנות` : ''}`), bump(env)]);
   return json({ ok: true, added, skipped, replaced, cancelled: cancelled.size });
 }
 
