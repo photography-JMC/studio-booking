@@ -348,6 +348,54 @@
         '<div class="acts">'+(ad?'':(r.ok?'<button class="btn ghost" data-act="safety-revoke" data-u="'+u+'">ביטול חתימה</button>':'<button class="btn ghost" data-act="safety-set" data-u="'+u+'">סימון כחתם</button>'))+'</div></div>';
     }).join('')+'</div>';
   }
+  /* ----- חסימות "תיאום עם ירדן גבאי": ימים, תאריכים, שעות ואולפנים ----- */
+  var COORD='תיאום עם ירדן גבאי',DOW=['א׳','ב׳','ג׳','ד׳','ה׳'],DOWL=['ראשון','שני','שלישי','רביעי','חמישי'];
+  function cdScopes(){
+    var all=STUDIOS.map(function(t){return t.id}),z=ZONES;
+    return [['all','כל האולפנים',all],['black','האולפן השחור (כל העמדות)',z.black?z.black.ids:[]],['front','האולפן השחור הקדמי',z.front?z.front.ids:[]],['back','האולפן השחור האחורי',z.back?z.back.ids:[]],['white','האולפנים הלבנים (ג׳ וד׳)',['wc','wd']],['wc','אולפן לבן ג׳',['wc']],['wd','אולפן לבן ד׳',['wd']]];
+  }
+  function cdInit(){if(!S.cd){var t=ds(new Date());S.cd={mode:'add',days:[],from:t,to:t,hf:OPEN,ht:CLOSE,scope:'all',busy:false,msg:'',err:''}}}
+  function cdSummary(){
+    var today=ds(new Date()),by={},k,b,w,d;
+    for(k in S.bookings){b=S.bookings[k];if(b.name!==COORD||b.date<today)continue;
+      d=new Date(b.date+'T12:00:00').getDay();
+      w=by[d]||(by[d]={hours:{},studios:{},dates:{}});w.hours[b.hour]=1;w.studios[b.studio]=1;w.dates[b.date]=1}
+    var rows=Object.keys(by).sort().map(function(d){var w=by[d],hs=Object.keys(w.hours).map(Number).sort(function(a,c){return a-c}),ids=Object.keys(w.studios);
+      var nm=ids.length>=STUDIOS.length?'כל האולפנים':ids.length+' עמדות';
+      return '<li><b>יום '+(DOWL[d]||d)+'</b>: '+rng(hs[0],hs[hs.length-1]+1)+' · '+esc(nm)+' · '+Object.keys(w.dates).length+' תאריכים קרובים</li>'});
+    return rows.length?'<ul class="rules">'+rows.join('')+'</ul>':'<p class="hint">אין כרגע חסימות כאלה בתאריכים הקרובים.</p>';
+  }
+  function renderCoord(){
+    cdInit();var c=S.cd,hf='',ht='',h;
+    for(h=OPEN;h<CLOSE;h++)hf+='<option value="'+h+'"'+(h===c.hf?' selected':'')+'>'+hh(h)+'</option>';
+    for(h=OPEN+1;h<=CLOSE;h++)ht+='<option value="'+h+'"'+(h===c.ht?' selected':'')+'>'+hh(h)+'</option>';
+    var sc=cdScopes().map(function(x){return '<option value="'+x[0]+'"'+(c.scope===x[0]?' selected':'')+'>'+esc(x[1])+'</option>'}).join('');
+    var dy=DOW.map(function(n,i){var on=c.days.indexOf(i)>=0;return '<button type="button" class="btn'+(on?'':' ghost')+'" data-act="cd-day" data-d="'+i+'" aria-pressed="'+on+'" style="min-width:56px">'+n+'</button>'}).join('');
+    $('#main').innerHTML='<div class="admin"><h3>חסימות "תיאום עם ירדן גבאי"</h3>'+
+      '<p class="hint">בשעות האלה הסטודנטים רואים "תיאום עם ירדן גבאי" ולא יכולים להזמין. כאן קובעים באילו ימים ושעות החסימה קיימת, או מסירים אותה.</p>'+
+      '<div class="card"><h3>המצב הנוכחי</h3>'+cdSummary()+'</div>'+
+      '<div class="card"><h3>עדכון חסימות</h3>'+
+      '<div class="field"><label class="lbl" for="cd-mode">פעולה</label><select id="cd-mode"><option value="add"'+(c.mode==='add'?' selected':'')+'>הוספת חסימה</option><option value="remove"'+(c.mode==='remove'?' selected':'')+'>הסרת חסימה (פתיחה להזמנה)</option></select></div>'+
+      '<div class="field"><span class="lbl">ימים בשבוע</span><div style="display:flex;gap:6px;flex-wrap:wrap">'+dy+'</div></div>'+
+      '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-from">מתאריך</label><input id="cd-from" type="date" value="'+esc(c.from)+'"></div><div class="field"><label class="lbl" for="cd-to">עד תאריך</label><input id="cd-to" type="date" value="'+esc(c.to)+'"></div></div>'+
+      '<div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label class="lbl" for="cd-hf">משעה</label><select id="cd-hf">'+hf+'</select></div><div class="field"><label class="lbl" for="cd-ht">עד שעה</label><select id="cd-ht">'+ht+'</select></div></div>'+
+      '<div class="field"><label class="lbl" for="cd-scope">אולפנים</label><select id="cd-scope">'+sc+'</select></div>'+
+      (c.err?'<p class="err" role="alert">'+esc(c.err)+'</p>':'')+(c.msg?'<p class="ok" role="status">'+esc(c.msg)+'</p>':'')+
+      '<button class="btn" data-act="cd-run"'+(c.busy?' disabled':'')+'>'+(c.busy?'מעדכן…':(c.mode==='add'?'הוספת החסימה':'הסרת החסימה'))+'</button>'+
+      '<p class="hint">הוספה לא דורסת הזמנות קיימות: שעות שכבר תפוסות מדולגות. חגים וחופשות מדולגים.</p></div></div>';
+  }
+  async function cdRun(){
+    cdInit();var c=S.cd,sc=cdScopes().filter(function(x){return x[0]===c.scope})[0];
+    if(!c.days.length){c.err='בחרו לפחות יום אחד בשבוע.';c.msg='';return renderCoord()}
+    if(!c.from||!c.to||c.to<c.from){c.err='טווח התאריכים לא תקין.';c.msg='';return renderCoord()}
+    c.busy=true;c.err='';c.msg='';renderCoord();
+    try{
+      var r=await api('POST','/api/admin/coord',{mode:c.mode,days:c.days,from:c.from,to:c.to,hFrom:c.hf,hTo:c.ht,studios:sc[2]});
+      c.msg=c.mode==='add'?'נוספו '+r.added+' שעות-עמדה'+(r.skipped?', ודולגו '+r.skipped+' שכבר תפוסות.':'.'):'הוסרו '+r.removed+' שעות-עמדה.';
+      c.busy=false;await forceRefresh();
+    }catch(e){c.busy=false;c.err=e.message||'העדכון נכשל.'}
+    if(S.tab==='coord')renderCoord();
+  }
   function renderSafetyAdmin(){
     sfAdminLoad();var A=S.sfAdmin;
     var h='<div class="admin"><h3>כללי התנהגות באולפנים</h3>';
@@ -507,7 +555,7 @@
   function adminTab(){return isAdmin()}
   function renderTabs(){
     var t=[['book','הזמנה חדשה'],['mine','האזור שלי']];
-    if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')]);t.push(['stats','סטטיסטיקה']);t.push(['safety','כללי התנהגות'])}
+    if(isAdmin()){var pc=pendingMembers().length;t.push(['all','ניהול'+(pc?' ('+pc+')':'')]);t.push(['stats','סטטיסטיקה']);t.push(['safety','כללי התנהגות']);t.push(['coord','תיאום עם ירדן'])}
     $('#tabs').innerHTML=t.map(function(x){return '<button class="tab" role="tab" data-act="tab" data-v="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'</button>'}).join('')+'<button class="tab tab-privacy" type="button" data-act="privacy-open" aria-haspopup="dialog">הודעת פרטיות</button>';
     $('#who').innerHTML=(S.profile?avatarHTML(S.profile)+'<span>'+esc(S.profile.name)+'</span>':'')+(S.uid?'<a class="btn ghost" href="/api/guide" target="_blank" rel="noopener">מדריך</a><a class="btn ghost" href="/api/guide?dl=1" download>הורדת מדריך</a><button class="btn ghost" data-act="logout">התנתקות</button>':'');
   }
@@ -1121,6 +1169,7 @@
     if(S.tab==='all'&&isAdmin())return renderAdmin();
     if(S.tab==='stats'&&isAdmin())return renderStats();
     if(S.tab==='safety'&&isAdmin())return renderSafetyAdmin();
+    if(S.tab==='coord'&&isAdmin())return renderCoord();
     var list=groups();
     var html;
     if(!list.length) html='<div class="card empty"><p style="margin:0">אין הזמנות קרובות באולפנים.</p></div>';
@@ -1355,6 +1404,8 @@
     else if(a==='mem-rm-yes'){removeMember(b.dataset.u)}
     else if(a==='logout'){logout()}
     else if(a==='login'){login()}
+    else if(a==='cd-day'){cdInit();var di=parseInt(b.dataset.d,10),dx=S.cd.days.indexOf(di);if(dx>=0)S.cd.days.splice(dx,1);else S.cd.days.push(di);renderCoord()}
+    else if(a==='cd-run'){cdRun()}
     else if(a==='cl-all'){S.start=OPEN;S.dur=closeOf(S.date)-OPEN;S.anchor=null;renderSide()}
     else if(a==='sel-zone'){S.closeZone=b.dataset.z;S.studios=ZONES[S.closeZone].ids.slice();S.start=null;S.anchor=null;S.msg='';S.step='slots';S.done=null;render()}
     else if(a==='plan-open'){openPlan(b)}
@@ -1416,6 +1467,10 @@
       if(t.id==='cl-from'&&t0<=f0)t0=f0+1;
       if(t.id==='cl-to'&&t0<=f0)f0=t0-1;
       S.start=f0;S.dur=t0-f0;S.anchor=null;renderSide();return}
+    if(t.id&&t.id.indexOf('cd-')===0&&S.cd){var ck={'cd-mode':'mode','cd-from':'from','cd-to':'to','cd-scope':'scope'}[t.id];
+      if(ck){S.cd[ck]=t.value;if(ck==='mode'&&e.type==='change')renderCoord()}
+      else if(t.id==='cd-hf'||t.id==='cd-ht'){var v=parseInt(t.value,10);if(t.id==='cd-hf'){S.cd.hf=v;if(S.cd.ht<=v)S.cd.ht=v+1}else{S.cd.ht=v;if(S.cd.hf>=v)S.cd.hf=v-1}if(e.type==='change')renderCoord()}
+      return}
     if(t.id==='sf-q'){S.sfQ=t.value;var sl=$('#sf-list');if(sl)sl.innerHTML=sfListHTML();return}
     if(t.id==='al-nm'){S.alEditVal=t.value;return}
     if(t.id==='al-q'){S.alQ=t.value;var lq=$('#al-list');if(lq)lq.innerHTML=alListHTML();return}

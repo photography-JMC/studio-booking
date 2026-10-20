@@ -192,6 +192,7 @@ async function handleApi(request, env, url, ctx) {
   else if (method === 'POST' && path === '/api/admin/release') res = await releaseUser(c);
   else if (method === 'GET' && path === '/api/admin/export') res = await exportData(c);
   else if (method === 'POST' && path === '/api/admin/cleanup') res = await cleanupYear(c);
+  else if (method === 'POST' && path === '/api/admin/coord') res = await coordBlocks(c);
   else if (method === 'GET' && path === '/api/admin/audit') res = await auditList(c);
   else if (method === 'GET' && path === '/api/admin/infra') res = await infraInfo(c);
   else if (method === 'GET' && path === '/api/admin/stats') res = await statsData(c);
@@ -963,6 +964,56 @@ async function statsData(c) {
   if (detail) res.detail = detailRows.sort((a, b) => (a.date + a.lo).localeCompare(b.date + b.lo));
   return json(res);
 }
+/* ---------- חסימות "תיאום עם ירדן גבאי": מנהל מוסיף או מסיר לפי ימים, תאריכים, שעות ואולפנים ---------- */
+const COORD_NAME = 'תיאום עם ירדן גבאי';
+async function coordBlocks(c) {
+  const { env, request } = c;
+  const u = await needAdmin(c);
+  await rateLimit(env, 'w:' + u.id, 20, 60);
+  const b = await readBody(request);
+  const mode = b.mode === 'remove' ? 'remove' : 'add';
+  const days = [...new Set((Array.isArray(b.days) ? b.days : []).map(Number))].filter((d) => Number.isInteger(d) && d >= 0 && d <= 4);
+  if (!days.length) fail(400, 'days', 'בחרו לפחות יום אחד בשבוע.');
+  if (!validDate(b.from) || !validDate(b.to) || b.to < b.from) fail(400, 'date', 'טווח התאריכים לא תקין.');
+  const today = israelNow().date;
+  const from = b.from < today ? today : b.from;
+  if (b.to < from) fail(400, 'date', 'כל הטווח כבר עבר.');
+  if (b.to > addDays(from, 400)) fail(400, 'date', 'אפשר לעדכן עד 400 יום בכל פעם.');
+  const hf = b.hFrom, ht = b.hTo;
+  if (!Number.isInteger(hf) || !Number.isInteger(ht) || hf < RULES.OPEN || ht > RULES.CLOSE || ht <= hf) fail(400, 'hours', 'טווח השעות לא תקין.');
+  const ids = [...new Set((Array.isArray(b.studios) ? b.studios : []).map(String))];
+  if (!ids.length || ids.some((i) => !STUDIOS.some((s) => s.id === i))) fail(400, 'studios', 'נא לבחור אולפנים.');
+  const ph = ids.map(() => '?').join(',');
+  const dows = days.map(String);
+  if (mode === 'remove') {
+    const where = `user_id = 'sys-classes' AND name = ? AND date >= ? AND date <= ? AND hour >= ? AND hour < ? AND studio IN (${ph}) AND strftime('%w', date) IN (${dows.map(() => '?').join(',')})`;
+    const args = [COORD_NAME, from, b.to, hf, ht, ...ids, ...dows];
+    const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM bookings WHERE ${where}`).bind(...args).first()).n;
+    await env.DB.batch([env.DB.prepare(`DELETE FROM bookings WHERE ${where}`).bind(...args), audit(env, u, 'coord_remove', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${n} שעות-עמדה`), bump(env)]);
+    return json({ ok: true, removed: n });
+  }
+  const taken = new Set((await env.DB.prepare(`SELECT studio, date, hour FROM bookings WHERE date >= ? AND date <= ? AND studio IN (${ph})`).bind(from, b.to, ...ids).all()).results.map((r) => `${r.studio}|${r.date}|${r.hour}`));
+  const now = Date.now(), stmts = [];
+  let added = 0, skipped = 0;
+  for (let d = from; d <= b.to; d = addDays(d, 1)) {
+    if (!days.includes(new Date(d + 'T12:00:00Z').getUTCDay()) || blockedReason(d)) continue;
+    const gid = randomHex(8);
+    for (let h = hf; h < Math.min(ht, closeOf(d)); h++) for (const s of ids) {
+      if (taken.has(`${s}|${d}|${h}`)) { skipped++; continue; }
+      added++;
+      stmts.push(env.DB.prepare('INSERT INTO bookings (studio,date,hour,gid,user_id,name,email,role,purpose,people,notes,created_at,study_year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .bind(s, d, h, gid, 'sys-classes', COORD_NAME, 'classes@system.local', 'מערכת', 'אחר', 1, 'בתיאום מראש עם ירדן גבאי', now, ''));
+    }
+  }
+  if (added > 3000) fail(400, 'big', 'הטווח גדול מדי. צמצמו את התאריכים או האולפנים.');
+  for (let i = 0; i < stmts.length; i += 100) {
+    try { await env.DB.batch(stmts.slice(i, i + 100)); }
+    catch (e) { if (/UNIQUE|constraint/i.test(String(e && e.message))) fail(409, 'taken', 'חלק מהשעות הוזמנו בזמן העדכון. נסו שוב.'); throw e; }
+  }
+  await env.DB.batch([audit(env, u, 'coord_add', `${from}..${b.to}`, `ימים ${days.join('')} שעות ${hf}-${ht} אולפנים ${ids.join(',')}: ${added} שעות-עמדה`), bump(env)]);
+  return json({ ok: true, added, skipped });
+}
+
 async function cleanupYear(c) {
   const { env } = c;
   const a = await needAdmin(c);
