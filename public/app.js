@@ -349,7 +349,7 @@
     }).join('')+'</div>';
   }
   /* ----- חסימות "תיאום עם ירדן גבאי": ימים, תאריכים, שעות ואולפנים ----- */
-  var COORD='תיאום עם ירדן גבאי',DOW=['א׳','ב׳','ג׳','ד׳','ה׳'],DOWL=['ראשון','שני','שלישי','רביעי','חמישי'];
+  var COORD='תיאום עם ירדן גבאי',CDOW=['א׳','ב׳','ג׳','ד׳','ה׳'],DOWL=['ראשון','שני','שלישי','רביעי','חמישי'];
   function cdScopes(){
     var all=STUDIOS.map(function(t){return t.id}),z=ZONES;
     return [['all','כל האולפנים',all],['black','האולפן השחור (כל העמדות)',z.black?z.black.ids:[]],['front','האולפן השחור הקדמי',z.front?z.front.ids:[]],['back','האולפן השחור האחורי',z.back?z.back.ids:[]],['white','האולפנים הלבנים (ג׳ וד׳)',['wc','wd']],['wc','אולפן לבן ג׳',['wc']],['wd','אולפן לבן ד׳',['wd']]];
@@ -370,7 +370,7 @@
     for(h=OPEN;h<CLOSE;h++)hf+='<option value="'+h+'"'+(h===c.hf?' selected':'')+'>'+hh(h)+'</option>';
     for(h=OPEN+1;h<=CLOSE;h++)ht+='<option value="'+h+'"'+(h===c.ht?' selected':'')+'>'+hh(h)+'</option>';
     var sc=cdScopes().map(function(x){return '<option value="'+x[0]+'"'+(c.scope===x[0]?' selected':'')+'>'+esc(x[1])+'</option>'}).join('');
-    var dy=DOW.map(function(n,i){var on=c.days.indexOf(i)>=0;return '<button type="button" class="btn'+(on?'':' ghost')+'" data-act="cd-day" data-d="'+i+'" aria-pressed="'+on+'" style="min-width:56px">'+n+'</button>'}).join('');
+    var dy=CDOW.map(function(n,i){var on=c.days.indexOf(i)>=0;return '<button type="button" class="btn'+(on?'':' ghost')+'" data-act="cd-day" data-d="'+i+'" aria-pressed="'+on+'" style="min-width:56px">'+n+'</button>'}).join('');
     $('#main').innerHTML='<div class="admin"><h3>חסימות "תיאום עם ירדן גבאי"</h3>'+
       '<p class="hint">בשעות האלה הסטודנטים רואים "תיאום עם ירדן גבאי" ולא יכולים להזמין. כאן קובעים באילו ימים ושעות החסימה קיימת, או מסירים אותה.</p>'+
       '<div class="card"><h3>המצב הנוכחי</h3>'+cdSummary()+'</div>'+
